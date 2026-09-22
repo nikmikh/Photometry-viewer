@@ -100,6 +100,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
  <p id="err" hidden></p><p id="warn" hidden></p>
  <p id="lumName"></p><p id="lumSub"></p>
  <dl id="stats"></dl>
+ <label class="chk" style="background:none;border:0;padding:0;margin-bottom:4px"><input type="checkbox" id="flip">Flip beam direction</label>
+ <p class="note" id="flipNote" style="margin:0 0 14px"></p>
  <canvas id="polar" aria-label="Polar intensity diagram"></canvas>
  <div class="key"><span>C0–C180</span><span class="c90">C90–C270</span></div>
 </section>
@@ -110,7 +112,7 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
  <div class="row"><label for="dc">Distance from ceiling</label><output id="dcOut"></output><input type="range" id="dc" min="0.01" max="2.99" step="0.01"></div>
  <div class="row"><label for="dist">Distance from wall</label><output id="distOut"></output><input type="range" id="dist" min="0.01" max="4.99" step="0.01"></div>
  <div class="row"><label for="x">Offset along wall</label><output id="xOut"></output><input type="range" id="x" min="-3" max="3" step="0.05"></div>
- <div class="row"><label for="tilt">Tilt toward wall</label><output id="tiltOut"></output><input type="range" id="tilt" min="0" max="180" step="1"></div>
+ <div class="row"><label for="tilt">Tilt toward wall (0° = beam down)</label><output id="tiltOut"></output><input type="range" id="tilt" min="0" max="180" step="1"></div>
  <div class="row"><label for="spin">Rotation (C0 along wall at 0°)</label><output id="spinOut"></output><input type="range" id="spin" min="0" max="355" step="5"></div>
  <div class="row"><label for="dim">Dimming</label><output id="dimOut"></output><input type="range" id="dim" min="1" max="100" step="1"></div>
 </section>
@@ -237,17 +239,17 @@ function lookup(T,c,g){ // c 0..360, g 0..180 degrees
   return (T[a]*(1-gt)+T[a+1]*gt)*(1-ct)+(T[b]*(1-gt)+T[b+1]*gt)*ct;
 }
 function analyse(ph,T){
-  const d2r=Math.PI/180;let flux=0,imax=0;
+  const d2r=Math.PI/180;let flux=0,up=0,imax=0;
   for(let ci=0;ci<NC-1;ci++)for(let gi=0;gi<NG-1;gi++){
     const I=(T[ci*NG+gi]+T[ci*NG+gi+1]+T[(ci+1)*NG+gi]+T[(ci+1)*NG+gi+1])/4;
-    flux+=I*Math.sin((gi+0.5)*GSTEP*d2r)*GSTEP*d2r*CSTEP*d2r;
+    const dF=I*Math.sin((gi+0.5)*GSTEP*d2r)*GSTEP*d2r*CSTEP*d2r;flux+=dF;if((gi+0.5)*GSTEP>90)up+=dF;
   }
   for(let i=0;i<T.length;i++)if(T[i]>imax)imax=T[i];
   // plane profiles, signed angle -180..180 (negative side = opposite C plane)
   function profile(cA){const cB=(cA+180)%360;const a=[];for(let s=-180;s<=180;s+=0.5)a.push(s<0?lookup(T,cB,-s):lookup(T,cA,s));return a;}
   function width(pr,frac){let m=0,mi=0;pr.forEach((v,i)=>{if(v>m){m=v;mi=i;}});if(m<=0)return null;const th=m*frac;let l=mi,r=mi;while(l>0&&pr[l-1]>=th)l--;while(r<pr.length-1&&pr[r+1]>=th)r++;return (r-l)*0.5;}
   const p0=profile(0),p90=profile(90);
-  return {flux,imax,beam0:width(p0,0.5),beam90:width(p90,0.5),field0:width(p0,0.1),field90:width(p90,0.1),p0,p90};
+  return {flux,upFrac:flux>0?up/flux:0,imax,beam0:width(p0,0.5),beam90:width(p90,0.5),field0:width(p0,0.1),field90:width(p90,0.1),p0,p90};
 }
 if(typeof module!=='undefined')module.exports={parsePhotometry,buildTable,lookup,analyse,sampleRaw};
 function demoIES(){ // synthetic 25° spot, 1200 lm-ish
@@ -259,7 +261,7 @@ if(typeof module!=='undefined')module.exports={demoIES};
 // ---------- State ----------
 const $=id=>document.getElementById(id);
 const d2r=Math.PI/180;
-function newSlot(){return{ph:null,T:null,an:null,file:'',x:0,dist:0.6,z:2.95,tilt:0,spin:0,dim:100,cct:3000,anchor:'ceiling'};}
+function newSlot(){return{ph:null,T:null,an:null,file:'',x:0,dist:0.6,z:2.95,tilt:0,spin:0,dim:100,cct:3000,anchor:'ceiling',inv:false};}
 const S={roomW:6,roomD:5,roomH:3,rW:0.7,rF:0.3,rC:0.8,ev:0,k:1,needAuto:true,
   view:'room',mode:'real',iso:false,grid:0.5,yaw:0,pitch:8,zoom:1,compare:false,link:true,active:0,slots:[newSlot(),newSlot()]};
 const POS=['x','dist','z','tilt','spin'];
@@ -289,10 +291,10 @@ function surfaces(){const W=S.roomW,D=S.roomD,H=S.roomH;return[null,
   {axis:1,val:0,n:[0,1,0],b:[[-W/2,W/2],null,[0,H]]},{axis:2,val:0,n:[0,0,1],b:[[-W/2,W/2],[0,D],null]},
   {axis:2,val:H,n:[0,0,-1],b:[[-W/2,W/2],[0,D],null]},{axis:0,val:-W/2,n:[1,0,0],b:[null,[0,D],[0,H]]},
   {axis:0,val:W/2,n:[-1,0,0],b:[null,[0,D],[0,H]]}];}
-function illum(T,px,py,pz,n,L,cs,ss,ct,st,scale){
+function illum(T,px,py,pz,n,L,cs,ss,ct,st,scale,inv){
   let vx=px-L[0],vy=py-L[1],vz=pz-L[2];const r2=vx*vx+vy*vy+vz*vz;if(r2<1e-8)return 0;const r=Math.sqrt(r2);vx/=r;vy/=r;vz/=r;
   const cosi=-(vx*n[0]+vy*n[1]+vz*n[2]);if(cosi<=0)return 0;
-  const y1=vy*ct-vz*st,z1=vy*st+vz*ct;const lx=vx*cs+y1*ss,ly=-vx*ss+y1*cs,lz=z1;
+  const y1=vy*ct-vz*st,z1=vy*st+vz*ct;const lx=vx*cs+y1*ss;let ly=-vx*ss+y1*cs,lz=z1;if(inv){ly=-ly;lz=-lz;}
   const g=Math.acos(Math.max(-1,Math.min(1,-lz)))/d2r;let c=Math.atan2(ly,lx)/d2r;if(c<0)c+=360;
   return lookup(T,c,g)*scale*cosi/r2;}
 function camera(asp){const W=S.roomW,D=S.roomD,H=S.roomH;
@@ -326,11 +328,11 @@ function compute(pi,full){
         if(ok){best=t;bs=s;}}
       const k=j*w+i;SID[k]=bs;if(!bs)continue;
       const px=cam.C[0]+best*dx,py=cam.C[1]+best*dy,pz=cam.C[2]+best*dz;const Q=surf[bs];
-      E[k]=illum(T,px,py,pz,Q.n,L,cs,ss,ct,st,scale);U[k]=Q.axis===0?py:px;V[k]=Q.axis===2?py:pz;}}
+      E[k]=illum(T,px,py,pz,Q.n,L,cs,ss,ct,st,scale,sl.inv);U[k]=Q.axis===0?py:px;V[k]=Q.axis===2?py:pz;}}
   } else {const m=orthoMap(w,h,pi===visible().length-1),sid=S.view==='wall'?1:2,Q=surf[sid];
     for(let j=0;j<h;j++)for(let i=0;i<w;i++){const u=(i+0.5-m.ox)/m.sc-S.roomW/2,v=m.other-(j+0.5-m.oy)/m.sc;
       if(u<-S.roomW/2||u>S.roomW/2||v<0||v>m.other)continue;const k=j*w+i;SID[k]=sid;U[k]=u;V[k]=v;
-      E[k]=(sid===1?illum(T,u,0,v,Q.n,L,cs,ss,ct,st,scale):illum(T,u,v,0,Q.n,L,cs,ss,ct,st,scale));}}
+      E[k]=(sid===1?illum(T,u,0,v,Q.n,L,cs,ss,ct,st,scale,sl.inv):illum(T,u,v,0,Q.n,L,cs,ss,ct,st,scale,sl.inv));}}
   return d;}
 
 const rhoOf=()=>[0,S.rW,S.rF,S.rC,S.rW,S.rW];
@@ -417,13 +419,14 @@ function showStats(){const sl=act(),p=sl.ph,a=sl.an;
   const ang=(x,y)=>x==null?'–':(x===y?fmtN(x,1)+'°':fmtN(x,1)+'° / '+fmtN(y,1)+'°');
   const rows=[['Luminaire flux',fmtN(a.flux)+' lm'],['Lamp flux in file',p.lampFlux?fmtN(p.lampFlux)+' lm':'absolute photometry'],['Peak intensity',fmtN(a.imax)+' cd'],
     ['Beam angle (50%)',ang(a.beam0,a.beam90)],['Field angle (10%)',ang(a.field0,a.field90)],['Power',p.watts?fmtN(p.watts,1)+' W':'–'],['Efficacy',p.watts?fmtN(a.flux/p.watts)+' lm/W':'–']];
+  $('flip').checked=sl.inv;const upF=Math.round(a.upFrac*100);$('flipNote').textContent=a.upFrac>0.5?`Measured with the beam pointing up (${upF}% of the flux above horizontal), so it's flipped automatically. Tilt 0° always means the main beam points down.`:`Measured with the beam pointing down (${100-upF}% of the flux below horizontal).`;
   $('stats').innerHTML=rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('');
   $('warn').textContent=p.warnings.join(' ');$('warn').hidden=!p.warnings.length;drawPolar();}
 
 function load(text,name,slotIdx){
   try{const ph=parsePhotometry(text,name);const T=buildTable(ph);const an=analyse(ph,T);
     if(!(an.imax>0))throw new Error('Every intensity value in this file is zero.');
-    const sl=S.slots[slotIdx];Object.assign(sl,{ph,T,an,file:name});if(ph.cct)sl.cct=Math.round(ph.cct/100)*100;
+    const sl=S.slots[slotIdx];Object.assign(sl,{ph,T,an,file:name});if(ph.cct)sl.cct=Math.round(ph.cct/100)*100;sl.inv=an.upFrac>0.5;
     S.active=slotIdx;S.needAuto=true;$('err').hidden=true;syncInputs();showStats();schedule(true);
   }catch(e){$('err').textContent='Could not read '+name+'. '+e.message;$('err').hidden=false;}}
 function readFile(f,slotIdx){const r=new FileReader();r.onload=()=>load(r.result,f.name,slotIdx);r.readAsText(f,'ISO-8859-1');}
@@ -443,6 +446,7 @@ for(const k in roomCtl)$(k).addEventListener('input',e=>{const before=S.slots.ma
 for(const k in slotCtl)$(k).addEventListener('input',e=>{setSlot(k,parseFloat(e.target.value));if(k==='z')setSlot('anchor','floor');syncInputs();schedule(false);});
 $('dc').addEventListener('input',e=>{setSlot('z',S.roomH-parseFloat(e.target.value));setSlot('anchor','ceiling');syncInputs();schedule(false);});
 $('iso').onchange=e=>{S.iso=e.target.checked;schedule(true);};
+$('flip').onchange=e=>{act().inv=e.target.checked;schedule(true);};
 $('grid').onchange=e=>{S.grid=parseFloat(e.target.value);schedule(true);};
 $('auto').onclick=()=>{S.needAuto=true;schedule(true);};
 $('link').onchange=e=>{S.link=e.target.checked;if(S.link){const o=S.slots[1-S.active];for(const k of[...POS,'anchor'])o[k]=act()[k];schedule(true);}};
