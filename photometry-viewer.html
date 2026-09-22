@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Photometry viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+ --bg:#2C2D30;--panel:#353639;--line:#4A4B4F;--text:#ECEAE6;--muted:#A6A39D;--amber:#F2B33D;--cool:#8FB8DE;--void:#222325;--err:#F08A7A;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 Archivo,"Helvetica Neue",Arial,sans-serif;font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:auto minmax(0,1fr);height:100%}
+header{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--line)}
+header h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-0.01em}
+header p{margin:0;color:var(--muted);font-size:13px;flex:1}
+.btn{font:inherit;font-weight:500;color:var(--text);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--amber);color:#2A2217;border-color:var(--amber)}
+.btn.primary:hover{background:#F6C360}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.stage{position:relative;min-height:320px;background:var(--void)}
+.panes{position:absolute;inset:0;display:flex;gap:2px;background:var(--bg)}
+.pane{position:relative;flex:1;min-width:0;background:var(--void)}
+.pane[hidden]{display:none}
+.pane canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+.tag{position:absolute;left:12px;bottom:12px;display:flex;align-items:center;gap:8px;font-size:13px;max-width:calc(100% - 24px)}
+.tag b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:5px;background:var(--line);color:var(--text);font-weight:600;flex:none}
+.tag span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+body.compare .tag{max-width:60%}
+body.compare .pane.active .tag b{background:var(--amber);color:#2A2217}
+.pane.droptarget{outline:2px dashed var(--amber);outline-offset:-6px}
+select.chk{font:inherit;font-size:13px;color:var(--text)}
+.tabs{display:none;gap:6px;margin-bottom:14px}
+body.compare .tabs{display:flex}
+.tabs button{flex:1;font:inherit;font-size:13px;text-align:left;color:var(--muted);background:none;border:1px solid var(--line);border-radius:6px;padding:6px 10px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabs button[aria-pressed="true"]{border-color:var(--amber);color:var(--text)}
+label.chk.linkrow{margin:0 0 12px}
+body:not(.compare) label.chk.linkrow{display:none}
+.toolbar{position:absolute;top:12px;left:12px;right:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;pointer-events:none}
+.toolbar>*{pointer-events:auto}
+.seg{display:inline-flex;background:rgba(44,45,48,.88);border:1px solid var(--line);border-radius:7px;padding:2px}
+.seg button{font:inherit;font-size:13px;color:var(--muted);background:none;border:0;border-radius:5px;padding:5px 11px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--text);color:#232323}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;background:rgba(44,45,48,.88);border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer}
+.chk input{accent-color:var(--amber);margin:0}
+.readout{position:absolute;left:12px;bottom:42px;font-size:13px;background:rgba(34,35,37,.8);padding:3px 8px;border-radius:4px}
+.readout:empty{display:none}
+#hint{position:absolute;right:14px;bottom:12px;font-size:12px;color:var(--muted)}
+#legend[hidden]{display:none}
+#legend{position:absolute;right:12px;top:58px;background:rgba(44,45,48,.9);border:1px solid var(--line);border-radius:7px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;font-size:12px}
+.lg-title{color:var(--muted);margin-bottom:3px}
+.lg-row{display:flex;align-items:center;gap:8px}.lg-row i{width:14px;height:10px;border-radius:2px;display:inline-block}
+aside{border-left:1px solid var(--line);overflow-y:auto;background:var(--panel)}
+section{padding:16px 20px;border-bottom:1px solid var(--line)}
+section h2{font-size:13px;font-weight:600;margin:0 0 12px;color:var(--muted)}
+#lumName{font-size:18px;font-weight:600;margin:0;line-height:1.25;letter-spacing:-0.01em;overflow-wrap:anywhere}
+#lumSub{color:var(--muted);font-size:13px;margin:4px 0 12px;overflow-wrap:anywhere}
+dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0 0 12px;font-size:13px}
+dt{color:var(--muted)}dd{margin:0;text-align:right}
+#polar{width:100%;height:220px;display:block}
+.key{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:4px}
+.key span::before{content:"";display:inline-block;width:18px;height:0;border-top:2px solid var(--amber);vertical-align:middle;margin-right:6px}
+.key span.c90::before{border-top:2px dashed var(--cool)}
+.row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;margin-bottom:10px}
+.row label{font-size:13px}
+.row output{font-size:13px;color:var(--muted);text-align:right;min-width:56px}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--amber);margin:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.presets .btn{font-size:12px;padding:4px 9px}
+.note{font-size:12px;color:var(--muted);margin:10px 0 0}
+#err{color:var(--err);font-size:13px;margin:0 0 10px}
+#warn{color:var(--amber);font-size:12px;margin:0 0 10px}
+.drop{position:fixed;inset:10px;border:2px dashed var(--amber);border-radius:14px;background:rgba(34,35,37,.82);display:none;align-items:center;justify-content:center;font-size:22px;font-weight:600;z-index:10;pointer-events:none}
+body.dragging .drop{display:flex}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
+@media (max-width:860px){.app{grid-template-columns:1fr;grid-template-rows:auto 58vh auto;height:auto}aside{border-left:0}header p{display:none}}
+</style></head><body>
+<div class="app">
+<header><h1>Photometry viewer</h1><p>Drop an IES or LDT file to see the light from a single luminaire. Direct light, computed per pixel from the intensity table.</p>
+<label class="btn primary" for="file" id="openLbl">Open file</label><input id="file" type="file" accept=".ies,.ldt,.IES,.LDT"></header>
+<div class="stage">
+ <div class="panes">
+  <div class="pane active" data-slot="0"><canvas aria-label="Rendered light effect, luminaire A"></canvas><div class="readout"></div><div class="tag"><b>A</b><span></span></div></div>
+  <div class="pane" data-slot="1" hidden><canvas aria-label="Rendered light effect, luminaire B"></canvas><div class="readout"></div><div class="tag"><b>B</b><span></span></div></div>
+ </div>
+ <div class="toolbar">
+  <div class="seg" role="group" aria-label="View"><button data-view="room" aria-pressed="true">Room</button><button data-view="wall" aria-pressed="false">Wall elevation</button><button data-view="floor" aria-pressed="false">Floor plan</button></div>
+  <div class="seg" role="group" aria-label="Display"><button data-mode="real" aria-pressed="true">Realistic</button><button data-mode="false" aria-pressed="false">False colour</button></div>
+  <label class="chk"><input type="checkbox" id="iso">Isolux lines</label>
+  <label class="chk" for="grid">Grid <select id="grid" style="background:none;border:0;color:inherit;font:inherit"><option value="0">off</option><option value="0.25">0.25 m</option><option value="0.5" selected>0.5 m</option><option value="1">1 m</option></select></label>
+  <label class="chk"><input type="checkbox" id="compare">Compare two luminaires</label>
+ </div>
+ <div id="legend" hidden></div>
+ <div id="hint">Drag to orbit, scroll to zoom, double-click to reset</div>
+</div>
+<aside>
+<section>
+ <div class="tabs" role="group" aria-label="Luminaire"><button data-tab="0" aria-pressed="true">A</button><button data-tab="1" aria-pressed="false">B</button></div>
+ <p id="err" hidden></p><p id="warn" hidden></p>
+ <p id="lumName"></p><p id="lumSub"></p>
+ <dl id="stats"></dl>
+ <canvas id="polar" aria-label="Polar intensity diagram"></canvas>
+ <div class="key"><span>C0–C180</span><span class="c90">C90–C270</span></div>
+</section>
+<section><h2>Luminaire position</h2>
+ <label class="chk linkrow" style="background:none;border:0;padding:0"><input type="checkbox" id="link" checked>Same position for A and B</label>
+ <div class="presets"><button class="btn" data-preset="down">Downlight</button><button class="btn" data-preset="wash">Wall wash</button><button class="btn" data-preset="graze">Grazing</button><button class="btn" data-preset="up">Floor uplight</button><button class="btn" data-preset="aim">Aimed at wall</button></div>
+ <div class="row"><label for="z">Height above floor</label><output id="zOut"></output><input type="range" id="z" min="0.01" max="2.99" step="0.01"></div>
+ <div class="row"><label for="dc">Distance from ceiling</label><output id="dcOut"></output><input type="range" id="dc" min="0.01" max="2.99" step="0.01"></div>
+ <div class="row"><label for="dist">Distance from wall</label><output id="distOut"></output><input type="range" id="dist" min="0.01" max="4.99" step="0.01"></div>
+ <div class="row"><label for="x">Offset along wall</label><output id="xOut"></output><input type="range" id="x" min="-3" max="3" step="0.05"></div>
+ <div class="row"><label for="tilt">Tilt toward wall</label><output id="tiltOut"></output><input type="range" id="tilt" min="0" max="180" step="1"></div>
+ <div class="row"><label for="spin">Rotation (C0 along wall at 0°)</label><output id="spinOut"></output><input type="range" id="spin" min="0" max="355" step="5"></div>
+ <div class="row"><label for="dim">Dimming</label><output id="dimOut"></output><input type="range" id="dim" min="1" max="100" step="1"></div>
+</section>
+<section><h2>Room</h2>
+ <div class="row"><label for="roomW">Width</label><output id="roomWOut"></output><input type="range" id="roomW" min="1" max="20" step="0.5"></div>
+ <div class="row"><label for="roomD">Depth</label><output id="roomDOut"></output><input type="range" id="roomD" min="1" max="20" step="0.5"></div>
+ <div class="row"><label for="roomH">Height</label><output id="roomHOut"></output><input type="range" id="roomH" min="1.5" max="12" step="0.1"></div>
+ <div class="row"><label for="rW">Wall reflectance</label><output id="rWOut"></output><input type="range" id="rW" min="0.02" max="0.95" step="0.01"></div>
+ <div class="row"><label for="rF">Floor reflectance</label><output id="rFOut"></output><input type="range" id="rF" min="0.02" max="0.95" step="0.01"></div>
+ <div class="row"><label for="rC">Ceiling reflectance</label><output id="rCOut"></output><input type="range" id="rC" min="0.02" max="0.95" step="0.01"></div>
+</section>
+<section><h2>Rendering</h2>
+ <div class="row"><label for="cct">Colour temperature</label><output id="cctOut"></output><input type="range" id="cct" min="1800" max="8000" step="100"></div>
+ <div class="row" id="evRow"><label for="ev">Exposure (EV)</label><output id="evOut"></output><input type="range" id="ev" min="-6" max="6" step="0.1"></div>
+ <button class="btn" id="auto">Auto exposure</button>
+ <p class="note">Exposure stays fixed while you move or dim the luminaire, so brightness changes are real. Hover the view to read illuminance in lux.</p>
+</section>
+</aside>
+</div>
+<div class="drop">Drop an IES or LDT file</div>
+<script>
+// ---------- Photometric parsing ----------
+function numsFromIES(s){return s.trim().split(/[\s,]+/).filter(Boolean).map(Number);}
+function numsFromLines(lines){const out=[];for(const l of lines){for(const t of l.trim().split(/\s+/)){if(t==='')continue;out.push(parseFloat(t.replace(',','.')));}}return out;}
+
+function parseIES(text){
+  const lines=text.split(/\r\n|\r|\n/);
+  const meta={};let i=0;
+  for(;i<lines.length;i++){
+    const l=lines[i].trim();
+    if(/^TILT\s*=/i.test(l))break;
+    const m=l.match(/^\[([^\]]+)\]\s*(.*)$/);
+    if(m){const k=m[1].toUpperCase();meta[k]=meta[k]?meta[k]+' '+m[2]:m[2];}
+  }
+  if(i>=lines.length)throw new Error('No TILT= line found, so this is not a readable IES file.');
+  const tilt=lines[i].split('=')[1].trim().toUpperCase();
+  const nums=numsFromIES(lines.slice(i+1).join(' '));
+  let p=0;
+  if(tilt==='INCLUDE'){p++;const n=nums[p++];p+=2*n;}
+  const hdr=nums.slice(p,p+13);p+=13;
+  if(hdr.length<13||hdr.some(isNaN))throw new Error('The IES header numbers after TILT= are incomplete.');
+  const [nl,lm,mult,nv,nh,ptype,units,w,len,h,bf,,watts]=hdr;
+  const G=nums.slice(p,p+nv);p+=nv;const C=nums.slice(p,p+nh);p+=nh;
+  const cd=[];
+  for(let k=0;k<nh;k++){const row=nums.slice(p,p+nv);p+=nv;if(row.length<nv||row.some(isNaN))throw new Error('The IES candela table is shorter than the header says ('+nh+' × '+nv+' values).');cd.push(row.map(v=>v*mult*(bf||1)));}
+  const warnings=[];
+  if(ptype!==1)warnings.push('Type '+(ptype===2?'B':'A')+' photometry is shown as if it were Type C, so the orientation may be wrong.');
+  const c0=C[0],c1=C[C.length-1];let sym;
+  if(nh===1)sym='rot';else if(c0===0&&c1===90)sym='quad';else if(c0===0&&c1===180)sym='half0';else if(c0===90&&c1===270)sym='half90';else sym='full';
+  return {format:'IES',name:meta.LUMINAIRE||meta.LUMCAT||'',maker:meta.MANUFAC||'',catalog:meta.LUMCAT||'',
+    C,G,cd,sym,lampFlux:lm>0?nl*lm:null,watts:watts>0?watts:null,cct:null,warnings};
+}
+
+function parseLDT(text){
+  const L=text.split(/\r\n|\r|\n/);
+  const n=k=>{const v=parseFloat((L[k]||'').trim().replace(',','.'));return v;};
+  const isym=n(2),mc=Math.round(n(3)),ng=Math.round(n(5));
+  if(!(mc>0&&ng>0)||isNaN(isym))throw new Error('The EULUMDAT header does not list C-planes and gamma angles, so this is not a readable LDT file.');
+  const nsets=Math.abs(Math.round(n(25)));let k=26;let flux=0,watts=0,cct=null;
+  for(let j=0;j<nsets;j++){const cnt=n(k),f=n(k+2),w=n(k+5);flux+=isNaN(f)?0:f;watts+=isNaN(w)?0:w;const t=parseFloat((L[k+3]||'').replace(/[^\d.]/g,''));if(cct===null&&t>1000&&t<20000)cct=t;k+=6;}
+  k+=10;
+  const rest=numsFromLines(L.slice(k));let p=0;
+  const Call=rest.slice(p,p+mc);p+=mc;const G=rest.slice(p,p+ng);p+=ng;
+  let idx,sym;
+  if(isym===1){idx=[0];sym='rot';}
+  else if(isym===2){idx=[...Array(mc/2+1).keys()];sym='half0';}
+  else if(isym===3){const s=3*mc/4;idx=[...Array(mc/2+1).keys()].map(j=>(s+j)%mc);sym='half90ldt';}
+  else if(isym===4){idx=[...Array(mc/4+1).keys()];sym='quad';}
+  else {idx=[...Array(mc).keys()];sym='full';}
+  const warnings=[];
+  let F=flux;if(!(F>0)){F=1000;warnings.push('The file gives no lamp flux, so intensities are shown per 1000 lm.');}
+  const cd=[];for(const _ of idx){const row=rest.slice(p,p+ng);p+=ng;if(row.length<ng||row.some(isNaN))throw new Error('The LDT intensity table is shorter than the header says.');cd.push(row.map(v=>v*F/1000));}
+  let C=idx.map(j=>Call[j]);
+  if(sym==='half90ldt'){C=C.map(c=>c<270?c+360:c);}
+  return {format:'LDT',name:(L[8]||'').trim(),maker:(L[0]||'').trim(),catalog:(L[9]||'').trim(),C,G,cd,sym,
+    lampFlux:flux>0?flux:null,watts:watts>0?watts:null,cct,lorl:n(22),warnings};
+}
+
+function parsePhotometry(text,filename){
+  const isLDT=/\.ldt$/i.test(filename||'')||(!/TILT\s*=/i.test(text));
+  return isLDT?parseLDT(text):parseIES(text);
+}
+
+// ---------- Resampling onto a regular grid ----------
+const GSTEP=0.5,NG=361,CSTEP=1,NC=361;
+function mapC(sym,c){
+  c=((c%360)+360)%360;
+  switch(sym){
+    case 'rot':return 0;
+    case 'quad':if(c>270)return 360-c;if(c>180)return c-180;if(c>90)return 180-c;return c;
+    case 'half0':return c>180?360-c:c;
+    case 'half90':if(c<90||c>270)c=((180-c)%360+360)%360;return c;
+    case 'half90ldt':if(c>90&&c<270)c=((180-c)%360+360)%360;return c<270?c+360:c;
+    default:return c;
+  }
+}
+function bracket(arr,v){
+  if(v<=arr[0])return[0,0,0];const n=arr.length;if(v>=arr[n-1])return[n-1,n-1,0];
+  let lo=0,hi=n-1;while(hi-lo>1){const m=(lo+hi)>>1;if(arr[m]<=v)lo=m;else hi=m;}
+  const d=arr[hi]-arr[lo];return[lo,hi,d>0?(v-arr[lo])/d:0];
+}
+function sampleRaw(ph,c,g){
+  const G=ph.G;if(g<G[0]-1e-6||g>G[G.length-1]+1e-6)return 0;
+  const [g0,g1,gt]=bracket(G,g);
+  const rowAt=ci=>ph.cd[ci][g0]*(1-gt)+ph.cd[ci][g1]*gt;
+  if(ph.sym==='rot')return rowAt(0);
+  let cc=mapC(ph.sym,c);const C=ph.C,n=C.length;
+  if(ph.sym==='full'){
+    const first=C[0],last=C[n-1];
+    if(cc<first)cc+=360;
+    if(cc>last){ // wrap between last and first+360
+      const span=first+360-last;const t=span>0?(cc-last)/span:0;return rowAt(n-1)*(1-t)+rowAt(0)*t;}
+  }
+  const [c0,c1,ct]=bracket(C,cc);return rowAt(c0)*(1-ct)+rowAt(c1)*ct;
+}
+function buildTable(ph){
+  const T=new Float32Array(NC*NG);
+  for(let ci=0;ci<NC;ci++)for(let gi=0;gi<NG;gi++)T[ci*NG+gi]=sampleRaw(ph,ci*CSTEP,gi*GSTEP);
+  return T;
+}
+function lookup(T,c,g){ // c 0..360, g 0..180 degrees
+  const cf=c/CSTEP,gf=g/GSTEP;let ci=cf|0,gi=gf|0;if(ci>=NC-1)ci=NC-2;if(gi>=NG-1)gi=NG-2;
+  const ct=cf-ci,gt=gf-gi,a=ci*NG+gi,b=a+NG;
+  return (T[a]*(1-gt)+T[a+1]*gt)*(1-ct)+(T[b]*(1-gt)+T[b+1]*gt)*ct;
+}
+function analyse(ph,T){
+  const d2r=Math.PI/180;let flux=0,imax=0;
+  for(let ci=0;ci<NC-1;ci++)for(let gi=0;gi<NG-1;gi++){
+    const I=(T[ci*NG+gi]+T[ci*NG+gi+1]+T[(ci+1)*NG+gi]+T[(ci+1)*NG+gi+1])/4;
+    flux+=I*Math.sin((gi+0.5)*GSTEP*d2r)*GSTEP*d2r*CSTEP*d2r;
+  }
+  for(let i=0;i<T.length;i++)if(T[i]>imax)imax=T[i];
+  // plane profiles, signed angle -180..180 (negative side = opposite C plane)
+  function profile(cA){const cB=(cA+180)%360;const a=[];for(let s=-180;s<=180;s+=0.5)a.push(s<0?lookup(T,cB,-s):lookup(T,cA,s));return a;}
+  function width(pr,frac){let m=0,mi=0;pr.forEach((v,i)=>{if(v>m){m=v;mi=i;}});if(m<=0)return null;const th=m*frac;let l=mi,r=mi;while(l>0&&pr[l-1]>=th)l--;while(r<pr.length-1&&pr[r+1]>=th)r++;return (r-l)*0.5;}
+  const p0=profile(0),p90=profile(90);
+  return {flux,imax,beam0:width(p0,0.5),beam90:width(p90,0.5),field0:width(p0,0.1),field90:width(p90,0.1),p0,p90};
+}
+if(typeof module!=='undefined')module.exports={parsePhotometry,buildTable,lookup,analyse,sampleRaw};
+function demoIES(){ // synthetic 25° spot, 1200 lm-ish
+  const G=[];for(let g=0;g<=90;g+=2.5)G.push(g);
+  const cd=G.map(g=>{const s=4200*Math.exp(-Math.pow(g/12.8,2)*0.693*1)+180*Math.pow(Math.cos(g*Math.PI/180),3);return Math.round(s);});
+  return 'IESNA:LM-63-2002\n[MANUFAC] Demo\n[LUMINAIRE] Demo spot, about 25°\nTILT=NONE\n1 -1 1 '+G.length+' 1 1 2 0 0 0\n1 1 14\n'+G.join(' ')+'\n0\n'+cd.join(' ')+'\n';
+}
+if(typeof module!=='undefined')module.exports={demoIES};
+// ---------- State ----------
+const $=id=>document.getElementById(id);
+const d2r=Math.PI/180;
+function newSlot(){return{ph:null,T:null,an:null,file:'',x:0,dist:0.6,z:2.95,tilt:0,spin:0,dim:100,cct:3000,anchor:'ceiling'};}
+const S={roomW:6,roomD:5,roomH:3,rW:0.7,rF:0.3,rC:0.8,ev:0,k:1,needAuto:true,
+  view:'room',mode:'real',iso:false,grid:0.5,yaw:0,pitch:8,zoom:1,compare:false,link:true,active:0,slots:[newSlot(),newSlot()]};
+const POS=['x','dist','z','tilt','spin'];
+const panes=[...document.querySelectorAll('.pane')].map(el=>({el,canvas:el.querySelector('canvas'),ctx:el.querySelector('canvas').getContext('2d'),readout:el.querySelector('.readout'),tag:el.querySelector('.tag span'),buf:null}));
+const off=document.createElement('canvas'),octx=off.getContext('2d');
+const act=()=>S.slots[S.active];
+const visible=()=>S.compare?[0,1]:[0];
+
+// ---------- Colour helpers ----------
+function cctRGB(K){const t=K/100;let r,g,b;
+  if(t<=66){r=255;g=99.4708025861*Math.log(t)-161.1195681661;b=t<=19?0:138.5177312231*Math.log(t-10)-305.0447927307;}
+  else{r=329.698727446*Math.pow(t-60,-0.1332047592);g=288.1221695283*Math.pow(t-60,-0.0755148492);b=255;}
+  const c=[r,g,b].map(v=>Math.min(255,Math.max(0,v))/255).map(v=>Math.pow(v,2.2));
+  const Y=0.2126*c[0]+0.7152*c[1]+0.0722*c[2];return c.map(v=>v/Y);}
+const GAM=new Uint8ClampedArray(4096);for(let i=0;i<4096;i++){const v=i/4095;GAM[i]=Math.round(255*(v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055));}
+function turbo(x){x=Math.max(0,Math.min(1,x));
+  const r=0.13572138+x*(4.6153926+x*(-42.66032258+x*(132.13108234+x*(-152.94239396+x*59.28637943))));
+  const g=0.09140261+x*(2.19418839+x*(4.84296658+x*(-14.18503333+x*(4.27729857+x*2.82956604))));
+  const b=0.1066733+x*(12.64194608+x*(-60.58204836+x*(110.36276771+x*(-89.90310912+x*27.34824973))));
+  return[r,g,b].map(v=>Math.max(0,Math.min(255,v*255)));}
+function niceUp(v){if(!(v>0))return 1;const e=Math.pow(10,Math.floor(Math.log10(v)));for(const m of[1,2,5,10])if(m*e>=v*0.999)return m*e;return 10*e;}
+function niceSeq(top){const a=[top];let v=top;for(let i=0;i<8;i++){const e=Math.pow(10,Math.floor(Math.log10(v)+1e-9)),m=Math.round(v/e);v=m===5?2*e:m===2?e:m===1?0.5*e:v/2;a.unshift(v);}return a;}
+
+// ---------- Geometry ----------
+const SURF=['','back wall','floor','ceiling','left wall','right wall'];
+function surfaces(){const W=S.roomW,D=S.roomD,H=S.roomH;return[null,
+  {axis:1,val:0,n:[0,1,0],b:[[-W/2,W/2],null,[0,H]]},{axis:2,val:0,n:[0,0,1],b:[[-W/2,W/2],[0,D],null]},
+  {axis:2,val:H,n:[0,0,-1],b:[[-W/2,W/2],[0,D],null]},{axis:0,val:-W/2,n:[1,0,0],b:[null,[0,D],[0,H]]},
+  {axis:0,val:W/2,n:[-1,0,0],b:[null,[0,D],[0,H]]}];}
+function illum(T,px,py,pz,n,L,cs,ss,ct,st,scale){
+  let vx=px-L[0],vy=py-L[1],vz=pz-L[2];const r2=vx*vx+vy*vy+vz*vz;if(r2<1e-8)return 0;const r=Math.sqrt(r2);vx/=r;vy/=r;vz/=r;
+  const cosi=-(vx*n[0]+vy*n[1]+vz*n[2]);if(cosi<=0)return 0;
+  const y1=vy*ct-vz*st,z1=vy*st+vz*ct;const lx=vx*cs+y1*ss,ly=-vx*ss+y1*cs,lz=z1;
+  const g=Math.acos(Math.max(-1,Math.min(1,-lz)))/d2r;let c=Math.atan2(ly,lx)/d2r;if(c<0)c+=360;
+  return lookup(T,c,g)*scale*cosi/r2;}
+function camera(asp){const W=S.roomW,D=S.roomD,H=S.roomH;
+  const T=[0,D*0.42,H*0.45];const dist=(D-T[1])+Math.max(W,H)*0.55/S.zoom;
+  const cp=Math.cos(S.pitch*d2r),sp=Math.sin(S.pitch*d2r);
+  const C=[T[0]+dist*Math.sin(S.yaw*d2r)*cp,T[1]+dist*Math.cos(S.yaw*d2r)*cp,T[2]+dist*sp];
+  let f=[T[0]-C[0],T[1]-C[1],T[2]-C[2]];const fl=Math.hypot(...f);f=f.map(v=>v/fl);
+  let r=[f[1],-f[0],0];const rl=Math.hypot(...r);r=r.map(v=>v/rl);
+  const u=[r[1]*f[2]-r[2]*f[1],r[2]*f[0]-r[0]*f[2],r[0]*f[1]-r[1]*f[0]];
+  return{C,f,r,u,tan:Math.tan(32*d2r)*Math.max(1,1.5/(asp||1.5))};}
+function orthoMap(w,h,last){const W=S.roomW,other=S.view==='wall'?S.roomH:S.roomD;const pad=0.08;
+  const rr=S.mode==='false'?0.15:0;const sc=Math.min(w*(1-2*pad-rr)/W,h*(1-2*pad)/other);
+  return{sc,ox:(w*(1-rr)-W*sc)/2,oy:(h-other*sc)/2,W,other};}
+
+// ---------- Compute illuminance for one pane ----------
+function compute(pi,full){
+  const P=panes[pi],sl=S.slots[pi];const dpr=Math.min(window.devicePixelRatio||1,2);
+  const cw=P.canvas.clientWidth,ch=P.canvas.clientHeight;
+  const q=full?Math.min(dpr,1.25):0.45;const w=Math.max(40,Math.round(cw*q)),h=Math.max(30,Math.round(ch*q));
+  const E=new Float32Array(w*h),SID=new Uint8Array(w*h),U=new Float32Array(w*h),V=new Float32Array(w*h);
+  const d={w,h,E,SID,U,V,cw,ch,dpr,pi};if(!sl.T)return d;
+  const surf=surfaces(),L=[sl.x,sl.dist,sl.z],T=sl.T;
+  const cs=Math.cos(sl.spin*d2r),ss=Math.sin(sl.spin*d2r),ct=Math.cos(sl.tilt*d2r),st=Math.sin(sl.tilt*d2r),scale=sl.dim/100;
+  if(S.view==='room'){const asp=w/h,cam=camera(asp);
+    for(let j=0;j<h;j++){const sy=(1-2*(j+0.5)/h)*cam.tan;for(let i=0;i<w;i++){const sx=(2*(i+0.5)/w-1)*cam.tan*asp;
+      const dx=cam.f[0]+sx*cam.r[0]+sy*cam.u[0],dy=cam.f[1]+sx*cam.r[1]+sy*cam.u[1],dz=cam.f[2]+sx*cam.r[2]+sy*cam.u[2],dv=[dx,dy,dz];
+      let best=1e9,bs=0;
+      for(let s=1;s<=5;s++){const Q=surf[s];const dd=dv[Q.axis];if(Math.abs(dd)<1e-9||dd*Q.n[Q.axis]>=0)continue;
+        const t=(Q.val-cam.C[Q.axis])/dd;if(t<=0||t>=best)continue;let ok=true;
+        for(let a=0;a<3;a++){if(!Q.b[a])continue;const v=cam.C[a]+t*dv[a];if(v<Q.b[a][0]-1e-6||v>Q.b[a][1]+1e-6){ok=false;break;}}
+        if(ok){best=t;bs=s;}}
+      const k=j*w+i;SID[k]=bs;if(!bs)continue;
+      const px=cam.C[0]+best*dx,py=cam.C[1]+best*dy,pz=cam.C[2]+best*dz;const Q=surf[bs];
+      E[k]=illum(T,px,py,pz,Q.n,L,cs,ss,ct,st,scale);U[k]=Q.axis===0?py:px;V[k]=Q.axis===2?py:pz;}}
+  } else {const m=orthoMap(w,h,pi===visible().length-1),sid=S.view==='wall'?1:2,Q=surf[sid];
+    for(let j=0;j<h;j++)for(let i=0;i<w;i++){const u=(i+0.5-m.ox)/m.sc-S.roomW/2,v=m.other-(j+0.5-m.oy)/m.sc;
+      if(u<-S.roomW/2||u>S.roomW/2||v<0||v>m.other)continue;const k=j*w+i;SID[k]=sid;U[k]=u;V[k]=v;
+      E[k]=(sid===1?illum(T,u,0,v,Q.n,L,cs,ss,ct,st,scale):illum(T,u,v,0,Q.n,L,cs,ss,ct,st,scale));}}
+  return d;}
+
+const rhoOf=()=>[0,S.rW,S.rF,S.rC,S.rW,S.rW];
+function shade(d,levels){
+  const P=panes[d.pi],sl=S.slots[d.pi],{w,h,E,SID,U,V}=d;off.width=w;off.height=h;
+  const rho=rhoOf(),img=octx.createImageData(w,h),px=img.data,col=cctRGB(sl.cct),kk=S.k*Math.pow(2,S.ev);
+  const lo=Math.log(levels[0]),hi=Math.log(levels[levels.length-1]);
+  const band=e=>{let b=0;for(const l of levels)if(e>=l)b++;return b;};
+  for(let k=0;k<w*h;k++){const o=k*4;px[o+3]=255;
+    if(!SID[k]){px[o]=34;px[o+1]=35;px[o+2]=37;continue;}
+    if(S.mode==='real'){const Lm=rho[SID[k]]*E[k]/Math.PI*kk;for(let c=0;c<3;c++){const v=1-Math.exp(-Lm*col[c]);px[o+c]=GAM[Math.min(4095,(v*4095)|0)];}}
+    else if(E[k]<levels[0]){px[o]=18;px[o+1]=18;px[o+2]=30;}
+    else{const c=turbo(0.04+0.92*(Math.log(E[k])-lo)/(hi-lo));px[o]=c[0];px[o+1]=c[1];px[o+2]=c[2];}}
+  // surface grid: a line wherever a grid index changes between neighbouring pixels on the same surface
+  if(S.grid>0){const g=S.grid,mix=S.mode==='real'?0.38:0.3,gv=S.mode==='real'?150:255;
+    const mark=new Uint8Array(w*h);
+    for(let j=0;j<h-1;j++)for(let i=0;i<w-1;i++){const k=j*w+i,s=SID[k];if(!s)continue;
+      for(const n of[k+1,k+w]){if(SID[n]!==s)continue;
+        for(const A of[U,V]){const a=A[k],b=A[n];if(Math.abs(b-a)>g*0.35)continue; // too dense, skip to avoid moiré
+          if(Math.floor(a/g+1e-6)!==Math.floor(b/g+1e-6))mark[k]=1;}}}
+    for(let k=0;k<w*h;k++)if(mark[k]){const o=k*4;for(let c=0;c<3;c++)px[o+c]=px[o+c]*(1-mix)+gv*mix;}}
+  if(S.iso){for(let j=0;j<h-1;j++)for(let i=0;i<w-1;i++){const k=j*w+i;if(!SID[k]||SID[k+1]!==SID[k]||SID[k+w]!==SID[k])continue;const b=band(E[k]);
+    if(b>0&&(band(E[k+1])!==b||band(E[k+w])!==b)){const o=k*4;px[o]=px[o+1]=px[o+2]=S.mode==='real'?255:20;}}}
+  octx.putImageData(img,0,0);
+  const cv=P.canvas,ctx=P.ctx;cv.width=Math.round(d.cw*d.dpr);cv.height=Math.round(d.ch*d.dpr);
+  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(off,0,0,cv.width,cv.height);
+  ctx.setTransform(d.dpr,0,0,d.dpr,0,0);overlays(ctx,d.cw,d.ch,sl,d.pi);P.buf=d;
+  P.tag.textContent=sl.ph?(sl.ph.name||sl.file):'Drop a file here';}
+
+function overlays(ctx,cw,ch,sl,pi){
+  ctx.lineWidth=1;ctx.font='12px Archivo, system-ui, sans-serif';const L=[sl.x,sl.dist,sl.z];
+  const mark=(x,y)=>{ctx.beginPath();ctx.arc(x,y,6,0,7);ctx.strokeStyle='#F2B33D';ctx.lineWidth=2;ctx.stroke();ctx.beginPath();ctx.arc(x,y,2,0,7);ctx.fillStyle='#F2B33D';ctx.fill();ctx.lineWidth=1;};
+  if(S.view==='room'){const asp=cw/ch,cam=camera(asp);
+    const proj=P=>{const q=[P[0]-cam.C[0],P[1]-cam.C[1],P[2]-cam.C[2]];const z=q[0]*cam.f[0]+q[1]*cam.f[1]+q[2]*cam.f[2];if(z<0.05)return null;
+      return[(1+(q[0]*cam.r[0]+q[1]*cam.r[1]+q[2]*cam.r[2])/(z*cam.tan*asp))*cw/2,(1-(q[0]*cam.u[0]+q[1]*cam.u[1]+q[2]*cam.u[2])/(z*cam.tan))*ch/2];};
+    const W=S.roomW/2,D=S.roomD,H=S.roomH;const vs=[[-W,0,0],[W,0,0],[W,0,H],[-W,0,H],[-W,D,0],[W,D,0],[W,D,H],[-W,D,H]];
+    const ed=[[0,1],[1,2],[2,3],[3,0],[0,4],[1,5],[2,6],[3,7],[4,5],[5,6],[6,7],[7,4]];
+    ctx.strokeStyle='rgba(236,234,230,0.14)';ctx.beginPath();
+    for(const[a,b]of ed){const p=proj(vs[a]),q=proj(vs[b]);if(p&&q){ctx.moveTo(p[0],p[1]);ctx.lineTo(q[0],q[1]);}}ctx.stroke();
+    if(sl.T){const p=proj(L);if(p)mark(p[0],p[1]);}
+  } else {const m=orthoMap(cw,ch,pi===visible().length-1);const wall=S.view==='wall';
+    ctx.strokeStyle='rgba(236,234,230,0.25)';ctx.strokeRect(m.ox,m.oy,m.W*m.sc,m.other*m.sc);
+    ctx.fillStyle='rgba(236,234,230,0.6)';
+    ctx.textAlign='center';for(let u=0;u<=m.W+1e-6;u+=1)ctx.fillText((u-m.W/2).toFixed(0)+' m',m.ox+u*m.sc,m.oy+m.other*m.sc+16);
+    ctx.textAlign='right';for(let v=0;v<=m.other+1e-6;v+=1)ctx.fillText(v.toFixed(0)+' m',m.ox-8,m.oy+m.other*m.sc-v*m.sc+4);
+    ctx.textAlign='left';ctx.fillText(wall?'Back wall elevation, seen from the room':'Floor plan, back wall at the bottom',m.ox,m.oy-10);
+    if(sl.T)mark(m.ox+(L[0]+m.W/2)*m.sc,m.oy+m.other*m.sc-(wall?L[2]:L[1])*m.sc);}
+  if(!sl.T){ctx.fillStyle='rgba(236,234,230,0.7)';ctx.textAlign='center';ctx.font='15px Archivo, system-ui, sans-serif';ctx.fillText('Drop an IES or LDT file here for luminaire '+(pi?'B':'A'),cw/2,ch/2);}}
+
+function render(full){
+  const vis=visible();const ds=vis.map(pi=>compute(pi,full));const rho=rhoOf();
+  if(S.needAuto&&ds.some(d=>S.slots[d.pi].T)){const sm=[];for(const d of ds)for(let k=0;k<d.w*d.h;k+=3)if(d.SID[k]&&d.E[k]>0)sm.push(rho[d.SID[k]]*d.E[k]/Math.PI);
+    sm.sort((a,b)=>a-b);const ref=sm.length?sm[Math.floor(sm.length*0.985)]:1;S.k=1.9/Math.max(ref,1e-6);S.ev=0;S.needAuto=false;syncInputs();}
+  const sm=[];for(const d of ds)for(let k=0;k<d.w*d.h;k+=3)if(d.SID[k])sm.push(d.E[k]);sm.sort((a,b)=>a-b);
+  const levels=niceSeq(niceUp(sm.length?sm[Math.floor(sm.length*0.995)]:1));
+  ds.forEach(d=>shade(d,levels));drawLegend(levels);}
+
+function drawLegend(levels){const el=$('legend');if(S.mode!=='false'){el.hidden=true;return;}el.hidden=false;
+  const fmt=v=>v>=100?v.toFixed(0):v>=1?v.toPrecision(2).replace(/\.0$/,''):v.toPrecision(1);
+  const lo=Math.log(levels[0]),hi=Math.log(levels[levels.length-1]);
+  el.innerHTML='<span class="lg-title">Illuminance, lx</span>'+levels.slice().reverse().map(l=>{const c=turbo(0.04+0.92*(Math.log(l)-lo)/(hi-lo));return `<span class="lg-row"><i style="background:rgb(${c.map(Math.round).join(',')})"></i>${fmt(l)}</span>`;}).join('');}
+
+// ---------- Polar ----------
+function drawPolar(){const cv=$('polar'),c=cv.getContext('2d');const dpr=window.devicePixelRatio||1;const W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
+  const sl=act();if(!sl.an)return;const cx=W/2,cy=H/2,R=Math.min(W,H)/2-18;const perK=sl.ph.lampFlux?1000/sl.ph.lampFlux:null;
+  const top=niceUp(sl.an.imax*(perK||1));
+  c.strokeStyle='rgba(236,234,230,0.12)';c.fillStyle='rgba(236,234,230,0.5)';c.font='10px Archivo, system-ui, sans-serif';
+  for(let i=1;i<=4;i++){c.beginPath();c.arc(cx,cy,R*i/4,0,7);c.stroke();}
+  for(let a=0;a<360;a+=30){c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+R*Math.sin(a*d2r),cy+R*Math.cos(a*d2r));c.stroke();}
+  c.textAlign='left';c.fillText(Math.round(top)+(perK?' cd/klm':' cd'),cx+4,cy-R-4);
+  const plot=(pr,color,dash)=>{c.beginPath();c.setLineDash(dash);c.strokeStyle=color;c.lineWidth=1.8;
+    pr.forEach((v,i)=>{const s=(i*0.5-180)*d2r,r=R*v*(perK||1)/top;const x=cx+r*Math.sin(s),y=cy+r*Math.cos(s);i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();c.setLineDash([]);c.lineWidth=1;};
+  plot(sl.an.p0,'#F2B33D',[]);plot(sl.an.p90,'#8FB8DE',[5,4]);}
+
+// ---------- Sidebar ----------
+const fmtN=(v,d=0)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
+function showStats(){const sl=act(),p=sl.ph,a=sl.an;
+  document.querySelectorAll('[data-tab]').forEach(b=>{const s=S.slots[+b.dataset.tab];b.textContent=(b.dataset.tab==='0'?'A':'B')+': '+(s.ph?(s.ph.name||s.file):'no file');b.setAttribute('aria-pressed',+b.dataset.tab===S.active);});
+  panes.forEach((P,i)=>P.el.classList.toggle('active',i===S.active));
+  $('openLbl').textContent=S.compare?'Open file for '+(S.active?'B':'A'):'Open file';
+  if(!p){$('lumName').textContent='No file loaded for '+(S.active?'B':'A');$('lumSub').textContent='Drop an IES or LDT file on its view, or use Open file.';$('stats').innerHTML='';$('warn').hidden=true;drawPolar();return;}
+  $('lumName').textContent=p.name||sl.file;
+  $('lumSub').textContent=sl.file?[p.maker,p.format+' file: '+sl.file].filter(Boolean).join(', '):'Built-in example. Drop your own IES or LDT file anywhere on the page.';
+  const ang=(x,y)=>x==null?'–':(x===y?fmtN(x,1)+'°':fmtN(x,1)+'° / '+fmtN(y,1)+'°');
+  const rows=[['Luminaire flux',fmtN(a.flux)+' lm'],['Lamp flux in file',p.lampFlux?fmtN(p.lampFlux)+' lm':'absolute photometry'],['Peak intensity',fmtN(a.imax)+' cd'],
+    ['Beam angle (50%)',ang(a.beam0,a.beam90)],['Field angle (10%)',ang(a.field0,a.field90)],['Power',p.watts?fmtN(p.watts,1)+' W':'–'],['Efficacy',p.watts?fmtN(a.flux/p.watts)+' lm/W':'–']];
+  $('stats').innerHTML=rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('');
+  $('warn').textContent=p.warnings.join(' ');$('warn').hidden=!p.warnings.length;drawPolar();}
+
+function load(text,name,slotIdx){
+  try{const ph=parsePhotometry(text,name);const T=buildTable(ph);const an=analyse(ph,T);
+    if(!(an.imax>0))throw new Error('Every intensity value in this file is zero.');
+    const sl=S.slots[slotIdx];Object.assign(sl,{ph,T,an,file:name});if(ph.cct)sl.cct=Math.round(ph.cct/100)*100;
+    S.active=slotIdx;S.needAuto=true;$('err').hidden=true;syncInputs();showStats();schedule(true);
+  }catch(e){$('err').textContent='Could not read '+name+'. '+e.message;$('err').hidden=false;}}
+function readFile(f,slotIdx){const r=new FileReader();r.onload=()=>load(r.result,f.name,slotIdx);r.readAsText(f,'ISO-8859-1');}
+
+const roomCtl={roomW:[1,' m'],roomD:[1,' m'],roomH:[2,' m'],rW:[2,''],rF:[2,''],rC:[2,''],ev:[1,'']};
+const slotCtl={x:[2,' m'],dist:[2,' m'],z:[2,' m'],tilt:[0,'°'],spin:[0,'°'],dim:[0,'%'],cct:[0,' K']};
+function clampSlot(sl){sl.x=Math.max(-S.roomW/2,Math.min(S.roomW/2,sl.x));sl.dist=Math.max(0.01,Math.min(S.roomD-0.01,sl.dist));sl.z=Math.max(0.01,Math.min(S.roomH-0.01,sl.z));}
+function syncInputs(){S.slots.forEach(clampSlot);
+  $('x').min=-S.roomW/2;$('x').max=S.roomW/2;$('dist').max=S.roomD-0.01;$('z').max=S.roomH-0.01;$('dc').max=S.roomH-0.01;
+  for(const k in roomCtl){$(k).value=S[k];$(k+'Out').textContent=(k==='ev'&&S[k]>0?'+':'')+fmtN(S[k],roomCtl[k][0])+roomCtl[k][1];}
+  const sl=act();for(const k in slotCtl){$(k).value=sl[k];$(k+'Out').textContent=fmtN(sl[k],slotCtl[k][0])+slotCtl[k][1];}
+  const dc=S.roomH-sl.z;$('dc').value=dc;$('dcOut').textContent=fmtN(dc,2)+' m';}
+const targets=k=>S.compare&&S.link&&(POS.includes(k)||k==='anchor')?S.slots:[act()];
+function setSlot(k,v){for(const sl of targets(k))sl[k]=v;}
+for(const k in roomCtl)$(k).addEventListener('input',e=>{const before=S.slots.map(sl=>S.roomH-sl.z);S[k]=parseFloat(e.target.value);
+  if(k==='roomH')S.slots.forEach((sl,i)=>{if(sl.anchor==='ceiling')sl.z=S.roomH-before[i];});syncInputs();schedule(false);});
+for(const k in slotCtl)$(k).addEventListener('input',e=>{setSlot(k,parseFloat(e.target.value));if(k==='z')setSlot('anchor','floor');syncInputs();schedule(false);});
+$('dc').addEventListener('input',e=>{setSlot('z',S.roomH-parseFloat(e.target.value));setSlot('anchor','ceiling');syncInputs();schedule(false);});
+$('iso').onchange=e=>{S.iso=e.target.checked;schedule(true);};
+$('grid').onchange=e=>{S.grid=parseFloat(e.target.value);schedule(true);};
+$('auto').onclick=()=>{S.needAuto=true;schedule(true);};
+$('link').onchange=e=>{S.link=e.target.checked;if(S.link){const o=S.slots[1-S.active];for(const k of[...POS,'anchor'])o[k]=act()[k];schedule(true);}};
+$('compare').onchange=e=>{S.compare=e.target.checked;document.body.classList.toggle('compare',S.compare);panes[1].el.hidden=!S.compare;
+  if(S.compare){const b=S.slots[1],a=S.slots[0];for(const k of[...POS,'anchor','dim'])b[k]=a[k];}else S.active=0;
+  S.needAuto=true;syncInputs();showStats();schedule(true);};
+function setActive(i){if(i===S.active)return;S.active=i;syncInputs();showStats();}
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setActive(+b.dataset.tab));
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{S.view=b.dataset.view;document.querySelectorAll('[data-view]').forEach(x=>x.setAttribute('aria-pressed',x===b));$('hint').hidden=S.view!=='room';schedule(true);});
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{S.mode=b.dataset.mode;document.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',x===b));$('evRow').style.opacity=S.mode==='real'?1:0.4;schedule(true);});
+const presets={down:()=>({z:S.roomH-0.01,tilt:0,dist:Math.min(1,S.roomD/2)}),wash:()=>({z:S.roomH-0.01,tilt:0,dist:Math.min(0.8,S.roomD/3)}),graze:()=>({z:S.roomH-0.01,tilt:0,dist:0.1}),up:()=>({z:0.01,tilt:180,dist:0.3}),aim:()=>({z:Math.min(2.8,S.roomH-0.2),tilt:35,dist:Math.min(2,S.roomD-0.5)})};
+document.querySelectorAll('[data-preset]').forEach(b=>b.onclick=()=>{const p=presets[b.dataset.preset]();p.x=0;p.anchor=b.dataset.preset==='up'?'floor':'ceiling';for(const k in p)setSlot(k,p[k]);syncInputs();S.needAuto=true;schedule(true);});
+
+let timer=null,raf=null;
+function schedule(full){if(raf)cancelAnimationFrame(raf);raf=requestAnimationFrame(()=>{raf=null;render(full);if(!full){clearTimeout(timer);timer=setTimeout(()=>render(true),180);}});}
+
+// ---------- Drag and drop ----------
+let dragDepth=0;const paneAt=e=>{const el=e.target.closest&&e.target.closest('.pane');return el?+el.dataset.slot:null;};
+window.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++;document.body.classList.add('dragging');});
+window.addEventListener('dragleave',()=>{dragDepth--;if(dragDepth<=0){dragDepth=0;document.body.classList.remove('dragging');}});
+window.addEventListener('dragover',e=>{e.preventDefault();const p=paneAt(e);panes.forEach((P,i)=>P.el.classList.toggle('droptarget',S.compare&&i===p));});
+window.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');panes.forEach(P=>P.el.classList.remove('droptarget'));
+  const f=e.dataTransfer.files[0];if(!f)return;const p=paneAt(e);readFile(f,S.compare&&p!=null?p:S.active);});
+$('file').onchange=e=>{const f=e.target.files[0];if(f)readFile(f,S.active);e.target.value='';};
+
+// ---------- Orbit and hover ----------
+let drag=null;
+panes.forEach((P,pi)=>{const cv=P.canvas;
+  cv.addEventListener('pointerdown',e=>{if(S.compare)setActive(pi);if(S.view!=='room')return;drag={x:e.clientX,y:e.clientY,yaw:S.yaw,pitch:S.pitch};cv.setPointerCapture(e.pointerId);});
+  cv.addEventListener('pointermove',e=>{
+    if(drag){S.yaw=Math.max(-55,Math.min(55,drag.yaw-(e.clientX-drag.x)*0.25));S.pitch=Math.max(-15,Math.min(60,drag.pitch+(e.clientY-drag.y)*0.25));schedule(false);return;}
+    const b=P.buf;if(!b)return;const r=cv.getBoundingClientRect();const i=Math.floor((e.clientX-r.left)/b.cw*b.w),j=Math.floor((e.clientY-r.top)/b.ch*b.h);
+    if(i<0||j<0||i>=b.w||j>=b.h||!b.SID[j*b.w+i]||!S.slots[pi].T){P.readout.textContent='';return;}const k=j*b.w+i,E=b.E[k],s=b.SID[k];
+    const pos=s===1?`x ${fmtN(b.U[k],2)} m, height ${fmtN(b.V[k],2)} m`:s===2||s===3?`x ${fmtN(b.U[k],2)} m, ${fmtN(b.V[k],2)} m from wall`:`${fmtN(b.U[k],2)} m from wall, height ${fmtN(b.V[k],2)} m`;
+    P.readout.textContent=`${fmtN(E,E<10?1:0)} lx on ${SURF[s]}, ${pos}`;});
+  cv.addEventListener('pointerup',()=>{drag=null;});
+  cv.addEventListener('pointerleave',()=>{P.readout.textContent='';});
+  cv.addEventListener('wheel',e=>{if(S.view!=='room')return;e.preventDefault();S.zoom=Math.max(0.5,Math.min(3,S.zoom*Math.exp(-e.deltaY*0.001)));schedule(false);},{passive:false});
+  cv.addEventListener('dblclick',()=>{S.yaw=0;S.pitch=8;S.zoom=1;schedule(true);});});
+window.addEventListener('resize',()=>{schedule(true);drawPolar();});
+
+load(demoIES(),'',0);
+</script></body></html>
