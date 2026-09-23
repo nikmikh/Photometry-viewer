@@ -88,7 +88,8 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
   <div class="seg" role="group" aria-label="View"><button data-view="room" aria-pressed="true">Room</button><button data-view="wall" aria-pressed="false">Wall elevation</button><button data-view="floor" aria-pressed="false">Floor plan</button></div>
   <div class="seg" role="group" aria-label="Display"><button data-mode="real" aria-pressed="true">Realistic</button><button data-mode="false" aria-pressed="false">False colour</button></div>
   <label class="chk"><input type="checkbox" id="iso">Isolux lines</label>
-  <label class="chk" for="grid">Grid <select id="grid" style="background:none;border:0;color:inherit;font:inherit"><option value="0">off</option><option value="0.25">0.25 m</option><option value="0.5" selected>0.5 m</option><option value="1">1 m</option></select></label>
+  <label class="chk" for="grid">Grid <select id="grid" style="background:none;border:0;color:inherit;font:inherit"></select></label>
+  <div class="seg" role="group" aria-label="Units"><button data-units="m" aria-pressed="true">m / lx</button><button data-units="ft" aria-pressed="false">ft / fc</button></div>
   <label class="chk"><input type="checkbox" id="compare">Compare two luminaires</label>
  </div>
  <div id="legend" hidden></div>
@@ -116,13 +117,15 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
  <div class="row"><label for="spin">Rotation (C0 along wall at 0°)</label><output id="spinOut"></output><input type="range" id="spin" min="0" max="355" step="5"></div>
  <div class="row"><label for="dim">Dimming</label><output id="dimOut"></output><input type="range" id="dim" min="1" max="100" step="1"></div>
 </section>
-<section><h2>Room</h2>
+<section><h2>Room size</h2>
  <div class="row"><label for="roomW">Width</label><output id="roomWOut"></output><input type="range" id="roomW" min="1" max="20" step="0.5"></div>
  <div class="row"><label for="roomD">Depth</label><output id="roomDOut"></output><input type="range" id="roomD" min="1" max="20" step="0.5"></div>
  <div class="row"><label for="roomH">Height</label><output id="roomHOut"></output><input type="range" id="roomH" min="1.5" max="12" step="0.1"></div>
- <div class="row"><label for="rW">Wall reflectance</label><output id="rWOut"></output><input type="range" id="rW" min="0.02" max="0.95" step="0.01"></div>
- <div class="row"><label for="rF">Floor reflectance</label><output id="rFOut"></output><input type="range" id="rF" min="0.02" max="0.95" step="0.01"></div>
- <div class="row"><label for="rC">Ceiling reflectance</label><output id="rCOut"></output><input type="range" id="rC" min="0.02" max="0.95" step="0.01"></div>
+ <h2 style="margin:18px 0 10px">Surface reflectance</h2>
+ <p class="note" style="margin:-4px 0 12px">Sets how bright each surface looks in the Realistic view. Lux and footcandle values are direct light and do not change with it.</p>
+ <div class="row"><label for="rW">Walls</label><output id="rWOut"></output><input type="range" id="rW" min="0.02" max="0.95" step="0.01"></div>
+ <div class="row"><label for="rF">Floor</label><output id="rFOut"></output><input type="range" id="rF" min="0.02" max="0.95" step="0.01"></div>
+ <div class="row"><label for="rC">Ceiling</label><output id="rCOut"></output><input type="range" id="rC" min="0.02" max="0.95" step="0.01"></div>
 </section>
 <section><h2>Rendering</h2>
  <div class="row"><label for="cct">Colour temperature</label><output id="cctOut"></output><input type="range" id="cct" min="1800" max="8000" step="100"></div>
@@ -261,9 +264,19 @@ if(typeof module!=='undefined')module.exports={demoIES};
 // ---------- State ----------
 const $=id=>document.getElementById(id);
 const d2r=Math.PI/180;
+const FT=0.3048,FC=0.09290304;
+const isFt=()=>S.units==='ft';
+const toL=v=>isFt()?v/FT:v;           // metres -> display length
+const fromL=v=>isFt()?v*FT:v;         // display length -> metres
+const lenU=()=>isFt()?' ft':' m';
+const toE=v=>isFt()?v*FC:v;           // lux -> display illuminance
+const illU=()=>isFt()?'fc':'lx';
+const LEN={roomW:{m:[1,20,0.5,1],ft:[3,65,1,1]},roomD:{m:[1,20,0.5,1],ft:[3,65,1,1]},roomH:{m:[1.5,12,0.1,2],ft:[5,40,0.5,1]},
+  x:{m:[0,0,0.05,2],ft:[0,0,0.1,2]},dist:{m:[0.01,0,0.01,2],ft:[0.05,0,0.05,2]},z:{m:[0.01,0,0.01,2],ft:[0.05,0,0.05,2]},dc:{m:[0.01,0,0.01,2],ft:[0.05,0,0.05,2]}};
+const GRIDS={m:[['0','off'],['0.25','0.25 m'],['0.5','0.5 m'],['1','1 m']],ft:[['0','off'],[String(FT),'1 ft'],[String(2*FT),'2 ft'],[String(5*FT),'5 ft']]};
 function newSlot(){return{ph:null,T:null,an:null,file:'',x:0,dist:0.6,z:2.95,tilt:0,spin:0,dim:100,cct:3000,anchor:'ceiling',inv:false};}
 const S={roomW:6,roomD:5,roomH:3,rW:0.7,rF:0.3,rC:0.8,ev:0,k:1,needAuto:true,
-  view:'room',mode:'real',iso:false,grid:0.5,yaw:0,pitch:8,zoom:1,compare:false,link:true,active:0,slots:[newSlot(),newSlot()]};
+  units:'m',view:'room',mode:'real',iso:false,grid:0.5,yaw:0,pitch:8,zoom:1,compare:false,link:true,active:0,slots:[newSlot(),newSlot()]};
 const POS=['x','dist','z','tilt','spin'];
 const panes=[...document.querySelectorAll('.pane')].map(el=>({el,canvas:el.querySelector('canvas'),ctx:el.querySelector('canvas').getContext('2d'),readout:el.querySelector('.readout'),tag:el.querySelector('.tag span'),buf:null}));
 const off=document.createElement('canvas'),octx=off.getContext('2d');
@@ -340,12 +353,12 @@ function shade(d,levels){
   const P=panes[d.pi],sl=S.slots[d.pi],{w,h,E,SID,U,V}=d;off.width=w;off.height=h;
   const rho=rhoOf(),img=octx.createImageData(w,h),px=img.data,col=cctRGB(sl.cct),kk=S.k*Math.pow(2,S.ev);
   const lo=Math.log(levels[0]),hi=Math.log(levels[levels.length-1]);
-  const band=e=>{let b=0;for(const l of levels)if(e>=l)b++;return b;};
+  const band=e=>{const v=toE(e);let b=0;for(const l of levels)if(v>=l)b++;return b;};
   for(let k=0;k<w*h;k++){const o=k*4;px[o+3]=255;
     if(!SID[k]){px[o]=34;px[o+1]=35;px[o+2]=37;continue;}
     if(S.mode==='real'){const Lm=rho[SID[k]]*E[k]/Math.PI*kk;for(let c=0;c<3;c++){const v=1-Math.exp(-Lm*col[c]);px[o+c]=GAM[Math.min(4095,(v*4095)|0)];}}
-    else if(E[k]<levels[0]){px[o]=18;px[o+1]=18;px[o+2]=30;}
-    else{const c=turbo(0.04+0.92*(Math.log(E[k])-lo)/(hi-lo));px[o]=c[0];px[o+1]=c[1];px[o+2]=c[2];}}
+    else if(toE(E[k])<levels[0]){px[o]=18;px[o+1]=18;px[o+2]=30;}
+    else{const c=turbo(0.04+0.92*(Math.log(toE(E[k]))-lo)/(hi-lo));px[o]=c[0];px[o+1]=c[1];px[o+2]=c[2];}}
   // surface grid: a line wherever a grid index changes between neighbouring pixels on the same surface
   if(S.grid>0){const g=S.grid,mix=S.mode==='real'?0.38:0.3,gv=S.mode==='real'?150:255;
     const mark=new Uint8Array(w*h);
@@ -376,8 +389,9 @@ function overlays(ctx,cw,ch,sl,pi){
   } else {const m=orthoMap(cw,ch,pi===visible().length-1);const wall=S.view==='wall';
     ctx.strokeStyle='rgba(236,234,230,0.25)';ctx.strokeRect(m.ox,m.oy,m.W*m.sc,m.other*m.sc);
     ctx.fillStyle='rgba(236,234,230,0.6)';
-    ctx.textAlign='center';for(let u=0;u<=m.W+1e-6;u+=1)ctx.fillText((u-m.W/2).toFixed(0)+' m',m.ox+u*m.sc,m.oy+m.other*m.sc+16);
-    ctx.textAlign='right';for(let v=0;v<=m.other+1e-6;v+=1)ctx.fillText(v.toFixed(0)+' m',m.ox-8,m.oy+m.other*m.sc-v*m.sc+4);
+    const tick=isFt()?5*FT:1;
+    ctx.textAlign='center';for(let u=0;u<=m.W+1e-6;u+=tick)ctx.fillText(fmtN(toL(u-m.W/2),0)+lenU(),m.ox+u*m.sc,m.oy+m.other*m.sc+16);
+    ctx.textAlign='right';for(let v=0;v<=m.other+1e-6;v+=tick)ctx.fillText(fmtN(toL(v),0)+lenU(),m.ox-8,m.oy+m.other*m.sc-v*m.sc+4);
     ctx.textAlign='left';ctx.fillText(wall?'Back wall elevation, seen from the room':'Floor plan, back wall at the bottom',m.ox,m.oy-10);
     if(sl.T)mark(m.ox+(L[0]+m.W/2)*m.sc,m.oy+m.other*m.sc-(wall?L[2]:L[1])*m.sc);}
   if(!sl.T){ctx.fillStyle='rgba(236,234,230,0.7)';ctx.textAlign='center';ctx.font='15px Archivo, system-ui, sans-serif';ctx.fillText('Drop an IES or LDT file here for luminaire '+(pi?'B':'A'),cw/2,ch/2);}}
@@ -386,14 +400,14 @@ function render(full){
   const vis=visible();const ds=vis.map(pi=>compute(pi,full));const rho=rhoOf();
   if(S.needAuto&&ds.some(d=>S.slots[d.pi].T)){const sm=[];for(const d of ds)for(let k=0;k<d.w*d.h;k+=3)if(d.SID[k]&&d.E[k]>0)sm.push(rho[d.SID[k]]*d.E[k]/Math.PI);
     sm.sort((a,b)=>a-b);const ref=sm.length?sm[Math.floor(sm.length*0.985)]:1;S.k=1.9/Math.max(ref,1e-6);S.ev=0;S.needAuto=false;syncInputs();}
-  const sm=[];for(const d of ds)for(let k=0;k<d.w*d.h;k+=3)if(d.SID[k])sm.push(d.E[k]);sm.sort((a,b)=>a-b);
+  const sm=[];for(const d of ds)for(let k=0;k<d.w*d.h;k+=3)if(d.SID[k])sm.push(toE(d.E[k]));sm.sort((a,b)=>a-b);
   const levels=niceSeq(niceUp(sm.length?sm[Math.floor(sm.length*0.995)]:1));
   ds.forEach(d=>shade(d,levels));drawLegend(levels);}
 
 function drawLegend(levels){const el=$('legend');if(S.mode!=='false'){el.hidden=true;return;}el.hidden=false;
   const fmt=v=>v>=100?v.toFixed(0):v>=1?v.toPrecision(2).replace(/\.0$/,''):v.toPrecision(1);
   const lo=Math.log(levels[0]),hi=Math.log(levels[levels.length-1]);
-  el.innerHTML='<span class="lg-title">Illuminance, lx</span>'+levels.slice().reverse().map(l=>{const c=turbo(0.04+0.92*(Math.log(l)-lo)/(hi-lo));return `<span class="lg-row"><i style="background:rgb(${c.map(Math.round).join(',')})"></i>${fmt(l)}</span>`;}).join('');}
+  el.innerHTML='<span class="lg-title">Illuminance, '+illU()+'</span>'+levels.slice().reverse().map(l=>{const c=turbo(0.04+0.92*(Math.log(l)-lo)/(hi-lo));return `<span class="lg-row"><i style="background:rgb(${c.map(Math.round).join(',')})"></i>${fmt(l)}</span>`;}).join('');}
 
 // ---------- Polar ----------
 function drawPolar(){const cv=$('polar'),c=cv.getContext('2d');const dpr=window.devicePixelRatio||1;const W=cv.clientWidth,H=cv.clientHeight;cv.width=W*dpr;cv.height=H*dpr;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
@@ -431,20 +445,28 @@ function load(text,name,slotIdx){
   }catch(e){$('err').textContent='Could not read '+name+'. '+e.message;$('err').hidden=false;}}
 function readFile(f,slotIdx){const r=new FileReader();r.onload=()=>load(r.result,f.name,slotIdx);r.readAsText(f,'ISO-8859-1');}
 
-const roomCtl={roomW:[1,' m'],roomD:[1,' m'],roomH:[2,' m'],rW:[2,''],rF:[2,''],rC:[2,''],ev:[1,'']};
-const slotCtl={x:[2,' m'],dist:[2,' m'],z:[2,' m'],tilt:[0,'°'],spin:[0,'°'],dim:[0,'%'],cct:[0,' K']};
+const roomCtl={roomW:0,roomD:0,roomH:0,rW:[2,''],rF:[2,''],rC:[2,''],ev:[1,'']};
+const slotCtl={x:0,dist:0,z:0,tilt:[0,'°'],spin:[0,'°'],dim:[0,'%'],cct:[0,' K']};
+const isLen=k=>k in LEN;
 function clampSlot(sl){sl.x=Math.max(-S.roomW/2,Math.min(S.roomW/2,sl.x));sl.dist=Math.max(0.01,Math.min(S.roomD-0.01,sl.dist));sl.z=Math.max(0.01,Math.min(S.roomH-0.01,sl.z));}
-function syncInputs(){S.slots.forEach(clampSlot);
-  $('x').min=-S.roomW/2;$('x').max=S.roomW/2;$('dist').max=S.roomD-0.01;$('z').max=S.roomH-0.01;$('dc').max=S.roomH-0.01;
-  for(const k in roomCtl){$(k).value=S[k];$(k+'Out').textContent=(k==='ev'&&S[k]>0?'+':'')+fmtN(S[k],roomCtl[k][0])+roomCtl[k][1];}
-  const sl=act();for(const k in slotCtl){$(k).value=sl[k];$(k+'Out').textContent=fmtN(sl[k],slotCtl[k][0])+slotCtl[k][1];}
-  const dc=S.roomH-sl.z;$('dc').value=dc;$('dcOut').textContent=fmtN(dc,2)+' m';}
+function syncInputs(){S.slots.forEach(clampSlot);const sl=act(),u=S.units;
+  const setLen=(k,val,lo,hi)=>{const c=LEN[k][u];const el=$(k);el.min=toL(lo!=null?lo:c[0]).toFixed(3);el.max=toL(hi).toFixed(3);el.step=c[2];
+    el.value=toL(val);$(k+'Out').textContent=fmtN(toL(val),c[3])+lenU();};
+  setLen('roomW',S.roomW,fromL(LEN.roomW[u][0]),fromL(LEN.roomW[u][1]));
+  setLen('roomD',S.roomD,fromL(LEN.roomD[u][0]),fromL(LEN.roomD[u][1]));
+  setLen('roomH',S.roomH,fromL(LEN.roomH[u][0]),fromL(LEN.roomH[u][1]));
+  setLen('x',sl.x,-S.roomW/2,S.roomW/2);setLen('dist',sl.dist,fromL(LEN.dist[u][0]),S.roomD-0.01);
+  setLen('z',sl.z,fromL(LEN.z[u][0]),S.roomH-0.01);setLen('dc',S.roomH-sl.z,fromL(LEN.dc[u][0]),S.roomH-0.01);
+  for(const k in roomCtl){if(isLen(k))continue;$(k).value=S[k];$(k+'Out').textContent=(k==='ev'&&S[k]>0?'+':'')+fmtN(S[k],roomCtl[k][0])+roomCtl[k][1];}
+  for(const k in slotCtl){if(isLen(k))continue;$(k).value=sl[k];$(k+'Out').textContent=fmtN(sl[k],slotCtl[k][0])+slotCtl[k][1];}}
+function syncGrid(){const g=$('grid');g.innerHTML=GRIDS[S.units].map(([v,t])=>`<option value="${v}">${t}</option>`).join('');
+  const opts=GRIDS[S.units].map(o=>parseFloat(o[0]));let best=opts.reduce((a,b)=>Math.abs(b-S.grid)<Math.abs(a-S.grid)?b:a);S.grid=best;g.value=String(GRIDS[S.units].find(o=>parseFloat(o[0])===best)[0]);}
 const targets=k=>S.compare&&S.link&&(POS.includes(k)||k==='anchor')?S.slots:[act()];
 function setSlot(k,v){for(const sl of targets(k))sl[k]=v;}
-for(const k in roomCtl)$(k).addEventListener('input',e=>{const before=S.slots.map(sl=>S.roomH-sl.z);S[k]=parseFloat(e.target.value);
+for(const k in roomCtl)$(k).addEventListener('input',e=>{const before=S.slots.map(sl=>S.roomH-sl.z);S[k]=isLen(k)?fromL(parseFloat(e.target.value)):parseFloat(e.target.value);
   if(k==='roomH')S.slots.forEach((sl,i)=>{if(sl.anchor==='ceiling')sl.z=S.roomH-before[i];});syncInputs();schedule(false);});
-for(const k in slotCtl)$(k).addEventListener('input',e=>{setSlot(k,parseFloat(e.target.value));if(k==='z')setSlot('anchor','floor');syncInputs();schedule(false);});
-$('dc').addEventListener('input',e=>{setSlot('z',S.roomH-parseFloat(e.target.value));setSlot('anchor','ceiling');syncInputs();schedule(false);});
+for(const k in slotCtl)$(k).addEventListener('input',e=>{setSlot(k,isLen(k)?fromL(parseFloat(e.target.value)):parseFloat(e.target.value));if(k==='z')setSlot('anchor','floor');syncInputs();schedule(false);});
+$('dc').addEventListener('input',e=>{setSlot('z',S.roomH-fromL(parseFloat(e.target.value)));setSlot('anchor','ceiling');syncInputs();schedule(false);});
 $('iso').onchange=e=>{S.iso=e.target.checked;schedule(true);};
 $('flip').onchange=e=>{act().inv=e.target.checked;schedule(true);};
 $('grid').onchange=e=>{S.grid=parseFloat(e.target.value);schedule(true);};
@@ -455,6 +477,7 @@ $('compare').onchange=e=>{S.compare=e.target.checked;document.body.classList.tog
   S.needAuto=true;syncInputs();showStats();schedule(true);};
 function setActive(i){if(i===S.active)return;S.active=i;syncInputs();showStats();}
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setActive(+b.dataset.tab));
+document.querySelectorAll('[data-units]').forEach(b=>b.onclick=()=>{S.units=b.dataset.units;document.querySelectorAll('[data-units]').forEach(x=>x.setAttribute('aria-pressed',x===b));syncGrid();syncInputs();schedule(true);});
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{S.view=b.dataset.view;document.querySelectorAll('[data-view]').forEach(x=>x.setAttribute('aria-pressed',x===b));$('hint').hidden=S.view!=='room';schedule(true);});
 document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{S.mode=b.dataset.mode;document.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-pressed',x===b));$('evRow').style.opacity=S.mode==='real'?1:0.4;schedule(true);});
 const presets={down:()=>({z:S.roomH-0.01,tilt:0,dist:Math.min(1,S.roomD/2)}),wash:()=>({z:S.roomH-0.01,tilt:0,dist:Math.min(0.8,S.roomD/3)}),graze:()=>({z:S.roomH-0.01,tilt:0,dist:0.1}),up:()=>({z:0.01,tilt:180,dist:0.3}),aim:()=>({z:Math.min(2.8,S.roomH-0.2),tilt:35,dist:Math.min(2,S.roomD-0.5)})};
@@ -480,13 +503,14 @@ panes.forEach((P,pi)=>{const cv=P.canvas;
     if(drag){S.yaw=Math.max(-55,Math.min(55,drag.yaw-(e.clientX-drag.x)*0.25));S.pitch=Math.max(-15,Math.min(60,drag.pitch+(e.clientY-drag.y)*0.25));schedule(false);return;}
     const b=P.buf;if(!b)return;const r=cv.getBoundingClientRect();const i=Math.floor((e.clientX-r.left)/b.cw*b.w),j=Math.floor((e.clientY-r.top)/b.ch*b.h);
     if(i<0||j<0||i>=b.w||j>=b.h||!b.SID[j*b.w+i]||!S.slots[pi].T){P.readout.textContent='';return;}const k=j*b.w+i,E=b.E[k],s=b.SID[k];
-    const pos=s===1?`x ${fmtN(b.U[k],2)} m, height ${fmtN(b.V[k],2)} m`:s===2||s===3?`x ${fmtN(b.U[k],2)} m, ${fmtN(b.V[k],2)} m from wall`:`${fmtN(b.U[k],2)} m from wall, height ${fmtN(b.V[k],2)} m`;
-    P.readout.textContent=`${fmtN(E,E<10?1:0)} lx on ${SURF[s]}, ${pos}`;});
+    const uu=lenU(),U1=fmtN(toL(b.U[k]),2)+uu,V1=fmtN(toL(b.V[k]),2)+uu;
+    const pos=s===1?`x ${U1}, height ${V1}`:s===2||s===3?`x ${U1}, ${V1} from wall`:`${U1} from wall, height ${V1}`;
+    const Ed=toE(E);P.readout.textContent=`${fmtN(Ed,Ed<10?1:0)} ${illU()} on ${SURF[s]}, ${pos}`;});
   cv.addEventListener('pointerup',()=>{drag=null;});
   cv.addEventListener('pointerleave',()=>{P.readout.textContent='';});
   cv.addEventListener('wheel',e=>{if(S.view!=='room')return;e.preventDefault();S.zoom=Math.max(0.5,Math.min(3,S.zoom*Math.exp(-e.deltaY*0.001)));schedule(false);},{passive:false});
   cv.addEventListener('dblclick',()=>{S.yaw=0;S.pitch=8;S.zoom=1;schedule(true);});});
 window.addEventListener('resize',()=>{schedule(true);drawPolar();});
 
-load(demoIES(),'',0);
+syncGrid();load(demoIES(),'',0);
 </script></body></html>
