@@ -11,7 +11,7 @@ html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
 *,*::before,*::after{box-sizing:inherit}
 body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 Archivo,"Helvetica Neue",Arial,sans-serif;font-variant-numeric:tabular-nums}
 .app{display:grid;grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:auto minmax(0,1fr);height:100%}
-header{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:12px 20px;border-bottom:1px solid var(--line)}
+header{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:12px 20px;border-bottom:1px solid var(--line)}
 header h1{font-size:17px;font-weight:600;margin:0;letter-spacing:-0.01em}
 header p{margin:0;color:var(--muted);font-size:13px;flex:1}
 .btn{font:inherit;font-weight:500;color:var(--text);background:transparent;border:1px solid var(--line);border-radius:6px;padding:6px 12px;cursor:pointer}
@@ -71,14 +71,29 @@ dt{color:var(--muted)}dd{margin:0;text-align:right}
 .note{font-size:12px;color:var(--muted);margin:10px 0 0}
 #err{color:var(--err);font-size:13px;margin:0 0 10px}
 #warn{color:var(--amber);font-size:12px;margin:0 0 10px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);max-width:440px;padding:24px;font:inherit}
+dialog::backdrop{background:rgba(20,21,23,.62)}
+dialog h3{margin:0 0 10px;font-size:17px;font-weight:600}
+dialog p{margin:0 0 12px;color:var(--muted);font-size:14px;line-height:1.5}
+dialog p.lead{color:var(--text)}
+dialog .btn{margin-top:4px}
+dialog a{color:var(--amber)}
+dialog p.sig{border-top:1px solid var(--line);padding-top:14px;margin-top:18px;color:var(--text)}
+dialog p.sig b{font-weight:600}
+dialog#shot{max-width:min(90vw,900px)}
+#shotImg{width:100%;height:auto;border:1px solid var(--line);border-radius:8px;margin-bottom:12px;display:block}
+#pickList{display:flex;flex-direction:column;gap:6px;margin:0 0 14px;max-height:48vh;overflow:auto}
+#pickList .btn{margin:0;text-align:left;font-size:13px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 15px;font-size:13px;z-index:30;box-shadow:0 6px 22px rgba(0,0,0,.35)}
+#toast[hidden]{display:none}
 .drop{position:fixed;inset:10px;border:2px dashed var(--amber);border-radius:14px;background:rgba(34,35,37,.82);display:none;align-items:center;justify-content:center;font-size:22px;font-weight:600;z-index:10;pointer-events:none}
 body.dragging .drop{display:flex}
 input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
 @media (max-width:860px){.app{grid-template-columns:1fr;grid-template-rows:auto 56vh auto;height:auto}aside{border-left:0}header p{display:none}#hint{display:none}}
 </style></head><body>
 <div class="app">
-<header><h1>Photometry viewer</h1><p>Drop an IES or LDT file to see the light from a single luminaire. Direct light, computed per pixel from the intensity table.</p>
-<label class="btn primary" for="file" id="openLbl">Open file</label><input id="file" type="file" accept=".ies,.ldt,.IES,.LDT"></header>
+<header><h1>Photometry viewer</h1><p>Drop an IES, LDT or GLDF file to see the light from a single luminaire. Direct light, computed per pixel from the intensity table.</p>
+<button class="btn" id="shotBtn">Screenshot</button><button class="btn" id="aboutBtn">About</button><label class="btn primary" for="file" id="openLbl">Open file</label><input id="file" type="file" accept=".ies,.ldt,.gldf,.IES,.LDT,.GLDF"></header>
 <div class="stage">
  <div class="panes">
   <div class="pane active" data-slot="0"><canvas aria-label="Rendered light effect, luminaire A"></canvas><div class="readout"></div><div class="tag"><b>A</b><span></span></div></div>
@@ -137,7 +152,29 @@ input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
 </section>
 </aside>
 </div>
-<div class="drop">Drop an IES or LDT file</div>
+<dialog id="pick">
+ <h3>Choose a photometry</h3>
+ <p id="pickSub"></p>
+ <div id="pickList"></div>
+ <button class="btn" id="pickCancel">Cancel</button>
+</dialog>
+<dialog id="shot">
+ <h3>Screenshot</h3>
+ <img id="shotImg" alt="Screenshot of the current view and luminaire data">
+ <p>The clipboard is not available here. Right-click the image to copy or save it.</p>
+ <a class="btn" id="shotDl" download="photometry.png">Download PNG</a>
+ <button class="btn" id="shotClose">Close</button>
+</dialog>
+<dialog id="about">
+ <h3>About this tool</h3>
+ <p class="lead">This is my private initiative to make life easier, based on daily experience from more than 20 years in the lighting industry.</p>
+ <p>Drop an IES, LDT or GLDF file and see the light effect straight away, with no calculation model to prepare. It shows direct light only, computed per pixel from the photometric file.</p>
+ <p>Everything runs in your browser. Your files are never uploaded anywhere.</p>
+ <p class="sig"><b>Nikolay Mikhaylov</b><br>If you have any suggestions, send me a message at <a id="mailLink" href="#">e-mail</a>.</p>
+ <button class="btn" id="aboutClose">Close</button>
+</dialog>
+<div class="drop">Drop an IES, LDT or GLDF file</div>
+<div id="toast" hidden></div>
 <script>
 // ---------- Photometric parsing ----------
 function numsFromIES(s){return s.trim().split(/[\s,]+/).filter(Boolean).map(Number);}
@@ -202,6 +239,81 @@ function parseLDT(text){
 function parsePhotometry(text,filename){
   const isLDT=/\.ldt$/i.test(filename||'')||(!/TILT\s*=/i.test(text));
   return isLDT?parseLDT(text):parseIES(text);
+}
+
+// ---------- GLDF container (a ZIP holding product.xml plus LDT/IES files) ----------
+function unzip(buf){
+  const dv=new DataView(buf),u8=new Uint8Array(buf);let eo=-1;
+  for(let i=u8.length-22;i>=Math.max(0,u8.length-66000);i--){if(dv.getUint32(i,true)===0x06054b50){eo=i;break;}}
+  if(eo<0)throw new Error('This file is not a readable ZIP or GLDF container.');
+  const n=dv.getUint16(eo+10,true);let p=dv.getUint32(eo+16,true);
+  if(p===0xffffffff||n===0xffff)throw new Error('ZIP64 containers are not supported.');
+  const td=new TextDecoder('utf-8'),entries=[];
+  for(let i=0;i<n&&p+46<=u8.length;i++){
+    if(dv.getUint32(p,true)!==0x02014b50)break;
+    const method=dv.getUint16(p+10,true),csize=dv.getUint32(p+20,true);
+    const fnl=dv.getUint16(p+28,true),efl=dv.getUint16(p+30,true),fcl=dv.getUint16(p+32,true);
+    const lho=dv.getUint32(p+42,true);
+    entries.push({name:td.decode(u8.subarray(p+46,p+46+fnl)),method,csize,lho});
+    p+=46+fnl+efl+fcl;
+  }
+  return{u8,dv,entries};
+}
+async function unzipEntry(z,e){
+  const lh=e.lho;
+  if(z.dv.getUint32(lh,true)!==0x04034b50)throw new Error('The container has a broken entry.');
+  const fnl=z.dv.getUint16(lh+26,true),efl=z.dv.getUint16(lh+28,true),start=lh+30+fnl+efl;
+  const data=z.u8.subarray(start,start+e.csize);
+  if(e.method===0)return data;
+  if(e.method!==8)throw new Error('The container uses a compression this browser cannot unpack.');
+  if(typeof DecompressionStream==='undefined')throw new Error('This browser cannot unpack GLDF files.');
+  const st=new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(st).arrayBuffer());
+}
+function parseProductXml(xml){
+  const doc=new DOMParser().parseFromString(xml,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length)return null;
+  const tags=n=>Array.from(doc.getElementsByTagName(n));
+  const loc=el=>{if(!el)return '';const ls=Array.from(el.getElementsByTagName('Locale'));
+    const en=ls.find(l=>(l.getAttribute('language')||'').toLowerCase().indexOf('en')===0);
+    return (en||ls[0]||el).textContent.trim();};
+  const files={};for(const f of tags('File')){const id=f.getAttribute('id');const nm=(f.textContent||'').trim().split('/').pop();if(id&&nm)files[id]=nm;}
+  const byFile={};for(const p of tags('Photometry')){const r=p.getElementsByTagName('PhotometryFileReference')[0];
+    const fid=r&&r.getAttribute('fileId');if(fid&&files[fid])byFile[files[fid]]=p.getAttribute('id')||'';}
+  const mk=tags('Manufacturer')[0];
+  const nameEl=tags('ProductName')[0]||(tags('Variant')[0]||{getElementsByTagName:()=>[]}).getElementsByTagName('Name')[0];
+  return{maker:mk?mk.textContent.trim():'',product:loc(nameEl),byFile};
+}
+async function openGLDF(buf,name,slotIdx){
+  try{
+    const z=unzip(buf);
+    const px=z.entries.find(e=>/(^|\/)product\.xml$/i.test(e.name));
+    let meta=null;
+    if(px){try{meta=parseProductXml(new TextDecoder('utf-8').decode(await unzipEntry(z,px)));}catch(err){}}
+    const ldc=z.entries.filter(e=>/\.(ldt|ies)$/i.test(e.name));
+    if(!ldc.length)throw new Error('There is no LDT or IES photometry inside this container.');
+    let pick=0;
+    if(ldc.length>1){
+      const labels=ldc.map(e=>{const b=e.name.split('/').pop();const id=meta&&meta.byFile[b];return id?b+'  —  '+id:b;});
+      pick=await choosePhotometry(labels,meta&&meta.product);
+      if(pick<0)return;
+    }
+    const base=ldc[pick].name.split('/').pop();
+    const txt=new TextDecoder('windows-1252').decode(await unzipEntry(z,ldc[pick]));
+    load(txt,base,slotIdx,{container:name,product:meta&&meta.product,maker:meta&&meta.maker});
+  }catch(e){$('err').textContent='Could not read '+(name||'the file')+'. '+e.message;$('err').hidden=false;}
+}
+function choosePhotometry(labels,product){
+  return new Promise(res=>{
+    const dlg=$('pick');
+    $('pickSub').textContent=(product?product+': this ':'This ')+'container holds '+labels.length+' photometries. Pick the one to open.';
+    const box=$('pickList');box.innerHTML='';
+    labels.forEach((t,i)=>{const b=document.createElement('button');b.className='btn';b.textContent=t;
+      b.onclick=()=>{dlg.close();res(i);};box.appendChild(b);});
+    $('pickCancel').onclick=()=>{dlg.close();res(-1);};
+    dlg.onclose=()=>res(-1);
+    dlg.showModal();
+  });
 }
 
 // ---------- Resampling onto a regular grid ----------
@@ -427,7 +539,7 @@ function overlays(ctx,cw,ch,sl,pi){
         const dvec=peakDir(sl),t=hitDist(L,dvec);const end=[L[0]+dvec[0]*t,L[1]+dvec[1]*t,L[2]+dvec[2]*t];
         const p0=f(L),p1=f(end);if(Math.hypot(p1[0]-p0[0],p1[1]-p0[1])>6)drawArrow(ctx,p0,p1);}
       mark(...f(L));}}
-  if(!sl.T){ctx.fillStyle='rgba(236,234,230,0.7)';ctx.textAlign='center';ctx.font='15px Archivo, system-ui, sans-serif';ctx.fillText('Drop an IES or LDT file here for luminaire '+(pi?'B':'A'),cw/2,ch/2);}}
+  if(!sl.T){ctx.fillStyle='rgba(236,234,230,0.7)';ctx.textAlign='center';ctx.font='15px Archivo, system-ui, sans-serif';ctx.fillText('Drop an IES, LDT or GLDF file here for luminaire '+(pi?'B':'A'),cw/2,ch/2);}}
 
 function render(full){
   const vis=visible();const ds=vis.map(pi=>compute(pi,full));const rho=rhoOf();
@@ -443,18 +555,23 @@ function drawLegend(levels){const el=$('legend');if(S.mode!=='false'){el.hidden=
   el.innerHTML='<span class="lg-title">Illuminance, '+illU()+'</span>'+levels.slice().reverse().map(l=>{const c=turbo(0.04+0.92*(Math.log(l)-lo)/(hi-lo));return `<span class="lg-row"><i style="background:rgb(${c.map(Math.round).join(',')})"></i>${fmt(l)}</span>`;}).join('');}
 
 // ---------- Polar ----------
-let polarRetry=0;
-function drawPolar(){const cv=$('polar'),c=cv.getContext('2d');const dpr=window.devicePixelRatio||1;const W=cv.clientWidth,H=cv.clientHeight;
-  if(!(Math.min(W,H)/2-18>0)){if(polarRetry++<30)requestAnimationFrame(drawPolar);return;}polarRetry=0;cv.width=W*dpr;cv.height=H*dpr;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
-  const sl=act();if(!sl.an)return;const cx=W/2,cy=H/2,R=Math.min(W,H)/2-18;const perK=sl.ph.lampFlux?1000/sl.ph.lampFlux:null;
-  const top=niceUp(sl.an.imax*(perK||1));
+function polarInto(c,cx,cy,R,sl){
+  if(!sl||!sl.an||!(R>8))return;
+  const perK=sl.ph.lampFlux?1000/sl.ph.lampFlux:null,top=niceUp(sl.an.imax*(perK||1));
+  c.save();c.lineWidth=1;
   c.strokeStyle='rgba(236,234,230,0.12)';c.fillStyle='rgba(236,234,230,0.5)';c.font='10px Archivo, system-ui, sans-serif';
   for(let i=1;i<=4;i++){c.beginPath();c.arc(cx,cy,R*i/4,0,7);c.stroke();}
   for(let a=0;a<360;a+=30){c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+R*Math.sin(a*d2r),cy+R*Math.cos(a*d2r));c.stroke();}
   c.textAlign='left';c.fillText(Math.round(top)+(perK?' cd/klm':' cd'),cx+4,cy-R-4);
   const plot=(pr,color,dash)=>{c.beginPath();c.setLineDash(dash);c.strokeStyle=color;c.lineWidth=1.8;
-    pr.forEach((v,i)=>{const s=(i*0.5-180)*d2r,r=R*v*(perK||1)/top;const x=cx+r*Math.sin(s),y=cy+r*Math.cos(s);i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();c.setLineDash([]);c.lineWidth=1;};
-  plot(sl.an.p0,'#F2B33D',[]);plot(sl.an.p90,'#8FB8DE',[5,4]);}
+    pr.forEach((v,i)=>{const s=(i*0.5-180)*d2r,r=R*v*(perK||1)/top;const x=cx+r*Math.sin(s),y=cy+r*Math.cos(s);i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();c.setLineDash([]);};
+  c.restore();c.save();
+  plot(sl.an.p0,'#F2B33D',[]);plot(sl.an.p90,'#8FB8DE',[5,4]);c.restore();}
+let polarRetry=0;
+function drawPolar(){const cv=$('polar'),c=cv.getContext('2d');const dpr=window.devicePixelRatio||1;const W=cv.clientWidth,H=cv.clientHeight;
+  if(!(Math.min(W,H)/2-18>0)){if(polarRetry++<30)requestAnimationFrame(drawPolar);return;}polarRetry=0;
+  cv.width=W*dpr;cv.height=H*dpr;c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
+  polarInto(c,W/2,H/2,Math.min(W,H)/2-18,act());}
 
 // ---------- Sidebar ----------
 const fmtN=(v,d=0)=>v==null||isNaN(v)?'–':Number(v).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
@@ -462,9 +579,9 @@ function showStats(){const sl=act(),p=sl.ph,a=sl.an;
   document.querySelectorAll('[data-tab]').forEach(b=>{const s=S.slots[+b.dataset.tab];b.textContent=(b.dataset.tab==='0'?'A':'B')+': '+(s.ph?(s.ph.name||s.file):'no file');b.setAttribute('aria-pressed',+b.dataset.tab===S.active);});
   panes.forEach((P,i)=>P.el.classList.toggle('active',i===S.active));
   $('openLbl').textContent=S.compare?'Open file for '+(S.active?'B':'A'):'Open file';
-  if(!p){$('lumName').textContent='No file loaded for '+(S.active?'B':'A');$('lumSub').textContent='Drop an IES or LDT file on its view, or use Open file.';$('stats').innerHTML='';$('warn').hidden=true;drawPolar();return;}
+  if(!p){$('lumName').textContent='No file loaded for '+(S.active?'B':'A');$('lumSub').textContent='Drop an IES, LDT or GLDF file on its view, or use Open file.';$('stats').innerHTML='';$('warn').hidden=true;drawPolar();return;}
   $('lumName').textContent=p.name||sl.file;
-  $('lumSub').textContent=sl.file?[p.maker,p.format+' file: '+sl.file].filter(Boolean).join(', '):'Built-in example. Drop your own IES or LDT file anywhere on the page.';
+  $('lumSub').textContent=sl.file?[p.maker,p.container?'GLDF: '+p.container+' ('+p.format+' '+sl.file+')':p.format+' file: '+sl.file].filter(Boolean).join(', '):'Built-in example. Drop your own IES, LDT or GLDF file anywhere on the page.';
   const ang=(x,y)=>x==null?'–':(x===y?fmtN(x,1)+'°':fmtN(x,1)+'° / '+fmtN(y,1)+'°');
   const rows=[['Luminaire flux',fmtN(a.flux)+' lm'],['Lamp flux in file',p.lampFlux?fmtN(p.lampFlux)+' lm':'absolute photometry'],['Peak intensity',fmtN(a.imax)+' cd'],
     ['Beam angle (50%)',ang(a.beam0,a.beam90)],['Field angle (10%)',ang(a.field0,a.field90)],['Luminous opening',(()=>{const G=dims(sl);if(!G)return 'point source in file';const u=lenU();
@@ -475,14 +592,19 @@ function showStats(){const sl=act(),p=sl.ph,a=sl.an;
   $('stats').innerHTML=rows.map(r=>`<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join('');
   $('warn').textContent=p.warnings.join(' ');$('warn').hidden=!p.warnings.length;drawPolar();}
 
-function load(text,name,slotIdx){
+function load(text,name,slotIdx,extra){
   try{const ph=parsePhotometry(text,name);const T=buildTable(ph);const an=analyse(ph,T);
     if(!(an.imax>0))throw new Error('Every intensity value in this file is zero.');
+    if(extra){if(extra.product)ph.name=extra.product;if(extra.maker)ph.maker=extra.maker;ph.container=extra.container;}
     const sl=S.slots[slotIdx];Object.assign(sl,{ph,T,an,file:name});if(ph.cct)sl.cct=Math.round(ph.cct/100)*100;sl.inv=an.upFrac>0.5;
     S.active=slotIdx;S.needAuto=true;$('err').hidden=true;
   }catch(e){$('err').textContent='Could not read '+(name||'the file')+'. '+e.message;$('err').hidden=false;return;}
   try{syncInputs();showStats();schedule(true);}catch(e){console.error(e);}}
-function readFile(f,slotIdx){const r=new FileReader();r.onload=()=>load(r.result,f.name,slotIdx);r.readAsText(f,'ISO-8859-1');}
+function readFile(f,slotIdx){const r=new FileReader();
+  r.onload=()=>{const buf=r.result,head=new Uint8Array(buf,0,Math.min(2,buf.byteLength));
+    if(head[0]===0x50&&head[1]===0x4B)openGLDF(buf,f.name,slotIdx);
+    else load(new TextDecoder('windows-1252').decode(new Uint8Array(buf)),f.name,slotIdx);};
+  r.readAsArrayBuffer(f);}
 
 const roomCtl={roomW:0,roomD:0,roomH:0,rW:[2,''],rF:[2,''],rC:[2,''],ev:[1,'']};
 const slotCtl={x:0,dist:0,z:0,tilt:[0,'°'],spin:[0,'°'],dim:[0,'%'],cct:[0,' K']};
@@ -534,6 +656,118 @@ window.addEventListener('dragleave',()=>{dragDepth--;if(dragDepth<=0){dragDepth=
 window.addEventListener('dragover',e=>{e.preventDefault();const p=paneAt(e);panes.forEach((P,i)=>P.el.classList.toggle('droptarget',S.compare&&i===p));});
 window.addEventListener('drop',e=>{e.preventDefault();dragDepth=0;document.body.classList.remove('dragging');panes.forEach(P=>P.el.classList.remove('droptarget'));
   const f=e.dataTransfer.files[0];if(!f)return;const p=paneAt(e);readFile(f,S.compare&&p!=null?p:S.active);});
+let toastT=null;
+function toast(msg){const el=$('toast');el.textContent=msg;el.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{el.hidden=true;},2800);}
+function shotRows(sl){const p=sl.ph,a=sl.an,u=lenU(),G=dims(sl);
+  const ang=(x,y)=>x==null?'–':(x===y?fmtN(x,1)+'°':fmtN(x,1)+'° / '+fmtN(y,1)+'°');
+  return[['Luminaire flux',fmtN(a.flux)+' lm'],['Lamp flux in file',p.lampFlux?fmtN(p.lampFlux)+' lm':'absolute'],
+    ['Peak intensity',fmtN(a.imax)+' cd'],['Beam angle (50%)',ang(a.beam0,a.beam90)],['Field angle (10%)',ang(a.field0,a.field90)],
+    ['Peak intensity at','γ '+fmtN(a.gPeak,0)+'°, C '+fmtN(a.cPeak,0)+'°'],
+    ['Luminous opening',G?(G.round?'Ø '+fmtN(toL(G.L),2)+u:fmtN(toL(G.L),2)+' × '+fmtN(toL(G.W),2)+u):'point source'],
+    ['Power',p.watts?fmtN(p.watts,1)+' W':'–'],['Efficacy',p.watts?fmtN(a.flux/p.watts)+' lm/W':'–'],
+    ['Colour temperature',fmtN(sl.cct)+' K'],['Mounting height',fmtN(toL(sl.z),2)+u],['Distance from ceiling',fmtN(toL(S.roomH-sl.z),2)+u],
+    ['Distance from wall',fmtN(toL(sl.dist),2)+u],['Offset along wall',fmtN(toL(sl.x),2)+u],
+    ['Tilt',fmtN(sl.tilt,0)+'°'],['Rotation',fmtN(sl.spin,0)+'°'],['Dimming',fmtN(sl.dim,0)+'%'],
+    ['Room W × D × H',fmtN(toL(S.roomW),1)+' × '+fmtN(toL(S.roomD),1)+' × '+fmtN(toL(S.roomH),1)+u]];}
+async function buildShot(){
+  if(document.fonts&&document.fonts.ready){try{await document.fonts.ready;}catch(e){}}
+  const vis=visible().filter(i=>S.slots[i].T);
+  if(!vis.length)throw new Error('Load a photometric file first.');
+  render(true);
+  const SC=2,W=1240,pad=32,gap=24,cw=W-2*pad,two=vis.length>1;
+  const F=(s,w)=>(w||400)+' '+s+'px Archivo, system-ui, sans-serif';
+  const srcs=vis.map(i=>panes[i].canvas);
+  const iw=(cw-(srcs.length-1)*gap)/srcs.length;
+  const ih=Math.min(Math.round(iw*(srcs[0].height||9)/(srcs[0].width||16)),520);
+  const colW=(cw-(vis.length-1)*gap)/vis.length,sub=two?1:2;
+  const sl0=S.slots[vis[0]];
+  const perCol=Math.ceil(shotRows(sl0).length/sub),pz=184;
+  // text fitting: shrink a little, then wrap, then clip with an ellipsis
+  const mc=document.createElement('canvas').getContext('2d');
+  const clip=(ctx,t,max)=>{let o=t;while(o.length>1&&ctx.measureText(o+'…').width>max)o=o.slice(0,-1);
+    return o.replace(/[\s·—-]+$/,'')+'…';};
+  const fitOne=(ctx,t,max,size,weight)=>{let z=size;ctx.font=F(z,weight);
+    while(ctx.measureText(t).width>max&&z>size*0.74){z-=0.5;ctx.font=F(z,weight);}
+    return{text:ctx.measureText(t).width<=max?t:clip(ctx,t,max),size:z};};
+  const wrapFit=(ctx,t,max,size,weight,maxLines)=>{let z=size;ctx.font=F(z,weight);
+    while(ctx.measureText(t).width>max&&z>size*0.84){z-=0.5;ctx.font=F(z,weight);}
+    if(ctx.measureText(t).width<=max)return{lines:[t],size:z};
+    const words=t.split(/\s+/),lines=[];let cur='';
+    for(const w of words){const test=cur?cur+' '+w:w;
+      if(!cur||ctx.measureText(test).width<=max)cur=test;
+      else{lines.push(cur);cur=w;if(lines.length===maxLines)break;}}
+    if(lines.length<maxLines&&cur)lines.push(cur);
+    if(lines.join(' ')!==t.trim().replace(/\s+/g,' '))lines[lines.length-1]=clip(ctx,lines[lines.length-1],max);
+    lines.forEach((l,i)=>{if(ctx.measureText(l).width>max)lines[i]=clip(ctx,l,max);});
+    return{lines,size:z};};
+  const viewLbl=S.view==='room'?'Room view':S.view==='wall'?'Wall elevation':'Floor plan';
+  mc.font=F(13);const vlw=mc.measureText(viewLbl).width;
+  const title=two?{lines:['Luminaire comparison'],size:24}:wrapFit(mc,sl0.ph.name||sl0.file||'Photometry',cw,24,600,2);
+  const LHT=Math.round(title.size*1.2),subY=pad+18+(title.lines.length-1)*LHT+21;
+  const heads=two?vis.map((i,k)=>wrapFit(mc,(k?'B — ':'A — ')+(S.slots[i].ph.name||S.slots[i].file||'example'),colW,15,600,2)):[];
+  const headLines=two?Math.max.apply(null,heads.map(h=>h.lines.length)):0;
+  const head=two?headLines*18+8:0;
+  const blockH=Math.max(pz,head+14+perCol*21);
+  const topH=two?40:(subY-pad+19);
+  const H=pad+topH+ih+30+blockH+46;
+  const cv=document.createElement('canvas');cv.width=W*SC;cv.height=H*SC;
+  const c=cv.getContext('2d');c.scale(SC,SC);
+  c.fillStyle='#2C2D30';c.fillRect(0,0,W,H);
+  c.textAlign='left';c.fillStyle='#ECEAE6';c.font=F(title.size,600);
+  title.lines.forEach((l,i)=>c.fillText(l,pad,pad+18+i*LHT));
+  c.font=F(13);c.fillStyle='#A6A39D';c.textAlign='right';c.fillText(viewLbl,W-pad,two?pad+16:subY);
+  c.textAlign='left';
+  if(!two){const subt=[sl0.ph.maker,sl0.ph.container?'GLDF '+sl0.ph.container+'  ·  '+sl0.file:sl0.ph.format+' '+(sl0.file||'example')].filter(Boolean).join('  ·  ');
+    if(subt){const f=fitOne(mc,subt,cw-vlw-24,13);c.font=F(f.size);c.fillText(f.text,pad,subY);}}
+  let y=pad+topH;
+  srcs.forEach((s,k)=>{const x=pad+k*(iw+gap);
+    c.save();c.beginPath();c.rect(x,y,iw,ih);c.clip();
+    const sa=s.width/s.height,da=iw/ih;let sw,sh,sx,sy;
+    if(sa>da){sh=s.height;sw=sh*da;sx=(s.width-sw)/2;sy=0;}else{sw=s.width;sh=sw/da;sx=0;sy=(s.height-sh)/2;}
+    c.drawImage(s,sx,sy,sw,sh,x,y,iw,ih);c.restore();
+    c.strokeStyle='#4A4B4F';c.strokeRect(x+0.5,y+0.5,iw-1,ih-1);
+    if(two){c.fillStyle='rgba(34,35,37,.85)';c.fillRect(x+8,y+ih-32,28,24);
+      c.fillStyle='#F2B33D';c.font=F(13,600);c.fillText(k?'B':'A',x+17,y+ih-15);}});
+  y+=ih+30;
+  vis.forEach((i,k)=>{const sl=S.slots[i],x=pad+k*(colW+gap);
+    if(two){c.fillStyle='#ECEAE6';c.font=F(heads[k].size,600);
+      heads[k].lines.forEach((l,li)=>c.fillText(l,x,y+12+li*18));}
+    const by=y+head;
+    polarInto(c,x+pz/2,by+pz/2,pz/2-18,sl);
+    const tx=x+pz+16,tw=colW-pz-16,rows=shotRows(sl),sw=tw/sub;
+    rows.forEach((r,ri)=>{const col=Math.floor(ri/perCol),row=ri%perCol,rx=tx+col*sw,ry=by+14+row*21;
+      c.font=F(12.5);const vw=c.measureText(r[1]).width;
+      const lf=fitOne(c,r[0],Math.max(48,sw-26-vw),12.5);
+      c.font=F(lf.size);c.textAlign='left';c.fillStyle='#A6A39D';c.fillText(lf.text,rx,ry);
+      c.font=F(12.5);c.textAlign='right';c.fillStyle='#ECEAE6';c.fillText(r[1],rx+sw-14,ry);});
+    c.textAlign='left';});
+  c.fillStyle='#A6A39D';c.font=F(11.5);
+  c.fillText('Direct light only  ·  '+(isFt()?'ft / fc':'m / lx')+'  ·  '+new Date().toLocaleDateString(),pad,H-24);
+  c.textAlign='right';c.fillStyle='#F2B33D';c.fillText('Photometry viewer',W-pad,H-24);
+  return cv;}
+async function screenshot(){
+  let cv;
+  try{cv=await buildShot();}catch(e){toast(e.message||'Could not build the image');return;}
+  const blobP=new Promise(r=>cv.toBlob(r,'image/png'));
+  try{
+    if(!navigator.clipboard||!window.ClipboardItem)throw new Error('no clipboard');
+    await navigator.clipboard.write([new ClipboardItem({'image/png':blobP})]);
+    toast('Image copied to the clipboard');return;
+  }catch(e){}
+  const name=((S.slots[S.active].ph&&S.slots[S.active].ph.name)||'photometry').replace(/[^\w\-]+/g,'_').slice(0,40)+'.png';
+  const b=await blobP,url=URL.createObjectURL(b);
+  const dl=$('shotDl');dl.href=url;dl.download=name;dl.hidden=(window.self!==window.top);
+  $('shotImg').src=url;$('shot').showModal();}
+$('shotBtn').onclick=screenshot;
+$('shotClose').onclick=()=>$('shot').close();
+// The address is stored in two pieces, so harvesters scanning the page source find no
+// complete address; it is assembled only when someone opens the About window.
+const MAIL=['nikolay.s.mikhaylov','gmail.com'];
+$('aboutBtn').onclick=()=>{const a=MAIL[0]+'@'+MAIL[1],el=$('mailLink');
+  el.textContent=a;el.href='mailto:'+a+'?subject='+encodeURIComponent('Photometry viewer');
+  $('about').showModal();};
+$('aboutClose').onclick=()=>$('about').close();
+$('about').addEventListener('click',e=>{if(e.target===$('about'))$('about').close();});
 $('file').onchange=e=>{const f=e.target.files[0];if(f)readFile(f,S.active);e.target.value='';};
 
 // ---------- Orbit and hover ----------
